@@ -30,7 +30,7 @@ SCHEMA_PATH = ROOT / "transform" / "schema.sql"
 REQUIRED_TABLES = {
     "lahman": ["lahman_people", "lahman_batting", "lahman_teams", "lahman_teams_franchises"],
     "retrosheet": ["retrosheet_gamelogs"],
-    "statcast": ["statcast_pitches"],
+    "statcast": ["statcast_pitches", "statcast_sprint_speed", "player_id_lookup"],
 }
 
 
@@ -98,6 +98,11 @@ def print_table(df, S: dict) -> None:
     for col in df.columns:
         if str(df[col].dtype).startswith("datetime64"):
             df[col] = df[col].dt.date
+        elif str(df[col].dtype) in ("float64", "float32"):
+            df[col] = df[col].round(3)
+    if "luck" in df.columns:
+        luck_labels = S.get("luck_labels", {})
+        df["luck"] = df["luck"].map(lambda v: luck_labels.get(v, v))
     labels = S["column_labels"]
     df = df.rename(columns={c: labels.get(c, c) for c in df.columns})
     print(tabulate(df, headers="keys", tablefmt="simple", showindex=False))
@@ -149,6 +154,15 @@ def pick_franchise(con: duckdb.DuckDBPyConnection, S: dict) -> str:
             return franch_id
 
 
+def prompt_statcast_season(con: duckdb.DuckDBPyConnection, S: dict) -> int:
+    seasons = [r[0] for r in con.execute(
+        "SELECT DISTINCT game_year FROM statcast_pitches ORDER BY game_year"
+    ).fetchall()]
+    default = seasons[-1] if seasons else None
+    prompt = S["prompt_statcast_season"].format(seasons=", ".join(str(s) for s in seasons))
+    return prompt_int(prompt, S, default=default)
+
+
 def handle_homerun_search(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     min_velo = prompt_float(S["prompt_min_exit_velo"], S)
     min_dist = prompt_float(S["prompt_min_distance"], S)
@@ -189,12 +203,39 @@ def handle_season_three_stat(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     print_table(df, S)
 
 
+def handle_barrel_hard_hit(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    season = prompt_statcast_season(con, S)
+    min_bbe = prompt_int(S["prompt_min_batted_balls"], S, default=50)
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.barrel_hard_hit_ranking(con, season, min_batted_balls=min_bbe, limit=limit)
+    print_table(df, S)
+
+
+def handle_expected_vs_actual(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    season = prompt_statcast_season(con, S)
+    min_pa = prompt_int(S["prompt_min_pa"], S, default=100)
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.expected_vs_actual_ranking(con, season, min_pa=min_pa, limit=limit)
+    print_table(df, S)
+
+
+def handle_sprint_speed(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    season = prompt_statcast_season(con, S)
+    min_opp = prompt_int(S["prompt_min_sprint_opp"], S, default=10)
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.sprint_speed_ranking(con, season, min_opportunities=min_opp, limit=limit)
+    print_table(df, S)
+
+
 HANDLERS = [
     handle_homerun_search,
     handle_team_career_hr,
     handle_season_two_stat,
     handle_win_pct_window,
     handle_season_three_stat,
+    handle_barrel_hard_hit,
+    handle_expected_vs_actual,
+    handle_sprint_speed,
 ]
 
 
