@@ -314,3 +314,94 @@ def sprint_speed_ranking(con: duckdb.DuckDBPyConnection, season: int,
         """,
         [season, min_opportunities, limit],
     ).fetchdf()
+
+
+# --- Retrosheet play-by-play templates (Phase 2) -----------------------------
+#
+# Both templates read from transform/schema.sql's v_run_expectancy /
+# v_win_probability / v_play_leverage views, which are themselves built on
+# ingest/retrosheet_playbyplay.py's parsed play-by-play data. See that
+# schema's comments for exactly how run expectancy, win probability, and
+# leverage index are computed (all approximations -- there isn't enough
+# ingested play-by-play history yet for an empirical win-probability table).
+
+def leadoff_and_walkoff_hr_games(con: duckdb.DuckDBPyConnection,
+                                  limit: int = 50) -> pd.DataFrame:
+    """Template 9: games where the very first plate appearance of the game
+    was a home run ("leadoff home run") AND the game ended on a walk-off home
+    run (bottom of the 9th or later, by a team that was tied or trailing
+    before that at-bat and takes the lead on it)."""
+    return con.execute(
+        """
+        WITH leadoff AS (
+            SELECT DISTINCT game_id, batter_id
+            FROM retrosheet_playbyplay
+            WHERE is_first_play_of_game AND event_type = 'home_run'
+        ),
+        walkoff AS (
+            SELECT
+                game_id, season, game_date, home_team, visiting_team,
+                inning AS walkoff_inning, batter_id AS walkoff_batter_id,
+                home_score_after, away_score_after
+            FROM retrosheet_playbyplay
+            WHERE is_last_play_of_game
+              AND event_type = 'home_run'
+              AND batting_team_home
+              AND inning >= 9
+              AND home_score_before <= away_score_before
+              AND home_score_after > away_score_after
+        )
+        SELECT
+            w.game_id,
+            w.season,
+            w.game_date,
+            w.home_team,
+            w.visiting_team,
+            ln.full_name AS leadoff_batter,
+            w.walkoff_inning,
+            wn.full_name AS walkoff_batter,
+            w.home_score_after AS final_home_score,
+            w.away_score_after AS final_away_score
+        FROM walkoff w
+        JOIN leadoff l ON l.game_id = w.game_id
+        LEFT JOIN v_playbyplay_names ln ON ln.retroID = l.batter_id
+        LEFT JOIN v_playbyplay_names wn ON wn.retroID = w.walkoff_batter_id
+        ORDER BY w.game_date DESC
+        LIMIT ?
+        """,
+        [limit],
+    ).fetchdf()
+
+
+def highest_leverage_plays(con: duckdb.DuckDBPyConnection,
+                            start_date: str | None = None, end_date: str | None = None,
+                            player_name: str | None = None, limit: int = 50) -> pd.DataFrame:
+    """Template 10: the individual plate appearances with the largest
+    win-probability swing (leverage index), optionally restricted to a date
+    range (start_date/end_date as "YYYY-MM-DD") and/or a batter name
+    (case-insensitive substring match)."""
+    conditions = []
+    params: list = []
+    if start_date:
+        conditions.append("game_date >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("game_date <= ?")
+        params.append(end_date)
+    if player_name:
+        conditions.append("batter_name ILIKE ?")
+        params.append(f"%{player_name}%")
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    sql = f"""
+        SELECT
+            game_id, game_date, home_team, visiting_team, inning,
+            batter_name, event_type, event_raw,
+            win_prob_home_before, win_prob_home_after, leverage_index
+        FROM v_play_leverage
+        {where_clause}
+        ORDER BY leverage_index DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    return con.execute(sql, params).fetchdf()

@@ -12,6 +12,8 @@ STRINGS = {
         "Barrel% / Hard-Hit% ranking (Statcast)",
         "Expected stats (xwOBA/xBA/xSLG) ranking vs. actual results (Statcast)",
         "Sprint Speed ranking (Statcast)",
+        "Games with a leadoff HR AND a walk-off HR (Retrosheet Play-by-Play)",
+        "Highest-leverage plate appearances (Retrosheet Play-by-Play)",
     ],
     "menu_exit": "Exit",
     "prompt_select": "Select a number",
@@ -41,6 +43,10 @@ STRINGS = {
     "prompt_min_pa": "Minimum plate appearances (PA)",
     "prompt_min_sprint_opp": "Minimum sprint opportunities (min_opp)",
 
+    "prompt_leverage_start_date": "Start date (YYYY-MM-DD, blank = no limit)",
+    "prompt_leverage_end_date": "End date (YYYY-MM-DD, blank = no limit)",
+    "prompt_batter_name_optional": "Filter by batter name (blank = all players, e.g. Ohtani)",
+
     "no_results": "No results matched those conditions.",
     "results_count": "{n} result(s) found.",
 
@@ -52,7 +58,9 @@ STRINGS = {
 
     "coverage_notice": (
         "Note: Statcast exit-velocity/distance data covers only the most recent 2 seasons,\n"
-        "and Lahman player/season stats (official SABR edition) cover through the 2025 season."
+        "and Lahman player/season stats (official SABR edition) cover through the 2025 season.\n"
+        "Play-by-Play data (templates 9-10) is only fetched for the most recent 5 seasons, and\n"
+        "Retrosheet's own play-by-play coverage is only partial before the 1920s."
     ),
 
     "column_labels": {
@@ -99,6 +107,20 @@ STRINGS = {
         "age": "Age",
         "competitive_runs": "Opportunities",
         "sprint_speed": "Sprint Speed (ft/s)",
+        "visiting_team": "Visitor",
+        "leadoff_batter": "Leadoff Batter",
+        "walkoff_inning": "Walk-off Inning",
+        "walkoff_batter": "Walk-off Batter",
+        "final_home_score": "Final Score (Home)",
+        "final_away_score": "Final Score (Away)",
+        "batter_name": "Batter",
+        "event_type": "Event Type",
+        "event_raw": "Play Detail (raw)",
+        "win_prob_home_before": "Win Prob. Before (Home)",
+        "win_prob_home_after": "Win Prob. After (Home)",
+        "leverage_index": "Leverage Index",
+        "inning": "Inning",
+        "game_id": "Game ID",
     },
 
     "luck_labels": {

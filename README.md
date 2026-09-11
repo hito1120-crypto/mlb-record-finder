@@ -7,7 +7,7 @@
 
 ## できること
 
-`python cli.py` を実行すると、8つの定型記録テンプレートから番号を選び、閾値や年度などのパラメータを入力するだけで、DuckDBに対してSQLが実行され、結果が表形式で表示されます。
+`python cli.py` を実行すると、10の定型記録テンプレートから番号を選び、閾値や年度などのパラメータを入力するだけで、DuckDBに対してSQLが実行され、結果が表形式で表示されます。
 
 1. **打球速度・飛距離条件を満たす本塁打を検索** (Statcast) — 例: 打球速度115mph以上 かつ 飛距離470ft以上の本塁打一覧
 2. **特定球団の通算本塁打ランキング** (Lahman) — 球団の歴史(移転・改名含む)を通算した選手別HRランキング
@@ -17,6 +17,8 @@
 6. **バレル率・Hard-Hit%ランキング** (Statcast) — 最低打球イベント数以上の選手を対象に、指定シーズンのバレル率・Hard-Hit%(打球速度95mph以上の割合)をランキング表示
 7. **期待成績(xwOBA/xBA/xSLG)ランキングと実成績との乖離** (Statcast) — 指定シーズンの期待成績上位選手を、実成績(wOBA/BA/SLG)との差分・好不調フラグ付きで表示
 8. **Sprint Speedランキング** (Statcast) — 指定シーズンの走力(Sprint Speed)上位選手を表示
+9. **先頭打者本塁打+サヨナラ本塁打の試合検索** (Retrosheet Play-by-Play) — その試合の最初の打席が本塁打、かつ試合そのものもサヨナラ本塁打で終わった試合を検索
+10. **レバレッジ指数が最も高かった打席検索** (Retrosheet Play-by-Play) — 各打席が本拠地チームの勝利確率に与えた変化量(レバレッジ指数)でランキング。期間・打者名で絞り込み可能
 
 ## データソース
 
@@ -27,6 +29,7 @@
 | [Lahman Baseball Database (SABR公式版)](https://sabr.box.com/s/y1prhc795jk8zvmelfd3jq7tl389y6cd) | シーズン・通算成績(打撃・投球・守備・受賞歴) | 1871年〜2025年シーズン |
 | [Retrosheet Game Logs](https://www.retrosheet.org/gamelogs/index.html) | チーム単位の試合ごとの勝敗・スコア | 1871年〜現在 |
 | [pybaseball](https://github.com/jldbc/pybaseball) 経由の Statcast (Baseball Savant) | 打球速度・飛距離・回転数等 | 直近2シーズンのみ取得 |
+| [Retrosheet Play-by-Play (イベントファイル)](https://www.retrosheet.org/events/index.html) | 打席単位の走者状況・スコア・プレー結果 | デフォルトで直近5シーズンのみ取得。Retrosheet側のPlay-by-Play記録自体、1920年代以前は部分的(後述) |
 
 Lahman Baseball Database は、かつての配布元だった `chadwickbureau/baseballdatabank` リポジトリがGitHub上から削除されて以降、SABR (Society for American Baseball Research) が公式に引き継いでメンテナンスしています。本ツールはSABRが公開しているBox.com上のCSV版(`lahman_1871-2025_csv` フォルダ、2026年1月リリース、2025年シーズンまで収録)を取得元としています。このBox.comフォルダのページ上には明示的なライセンス表記が見当たりません(SABRサイト内のNegro Leaguesデータ部分のみSeamheads.comのライセンス表記があります)。そのため本ツールでの利用は個人利用・研究利用の範囲を前提としています。
 
@@ -43,6 +46,13 @@ Box.comの共有フォルダは公開APIを持たないJS製SPAのため、`inge
 - **期待成績(xBA/xSLG/xwOBA)**: いずれも生データの既存列(`estimated_ba_using_speedangle` / `estimated_slg_using_speedangle` / `estimated_woba_using_speedangle`)を使用。xBA/xSLGは打球イベント(K/四球/死球は対象外)、xwOBAはK・四球・死球も加味した打席単位の指標という、Baseball Savant側の設計差をそのまま踏襲しています。実成績との差分(wOBA基準)が±0.015を超える場合に「好調(幸運)」「不振(不運)」フラグを付与しています(閾値は `query/templates.py` の `luck_threshold` で調整可能)。
 - **Sprint Speed**: 生データの `statcast_pitches` にはSprint Speed列が存在しないため、pybaseballの専用リーダーボード取得関数 `statcast_sprint_speed(year, min_opp)` を使用しています。これは投球単位ではなくシーズン単位の集計値のため、`ingest/statcast.py` では1シーズンにつき1回のみリクエストし(取得済みシーズンは再取得しません)、`data/raw/statcast/sprint_speed/` にキャッシュしています。
 - **打者ID⇄名前の変換**: 上記の理由により、pybaseballの `chadwick_register()` (MLBAM ID⇄選手名の全選手クロスウォーク)を一度だけ取得し、`data/raw/statcast/player_id_lookup.parquet` にキャッシュ、DuckDBには `player_id_lookup` テーブルとしてロードしています。これは特定シーズンに紐づかない全選手台帳のため、シーズンごとの再取得は不要です。
+
+### テンプレート9〜10 (Retrosheet Play-by-Play発展テンプレート) の実装メモ
+
+- **Play-by-Playの解析**: RetrosheetのPlay-by-Playは、そのままクエリできる表ではなく独自の圧縮記法で書かれたイベントファイルとして配布されています。`ingest/_playbyplay_parser.py` は、Cツールチェーン(Chadwickの `cwevent`)に依存しないフルスクラッチのPythonパーサーで、打席・走塁イベントごとに前後の走者状況とアウトカウント、得点を再構築します。この最終スコアの再構築結果は、取り込み済みの全試合についてRetrosheetのGame Logsと突き合わせて検証しており、本稿執筆時点で2025年シーズンの2,430試合中2,417試合(99.5%)が完全一致、残りの少数は単一の系統的バグというより個別の不整合に起因すると見られます。
+- **得点期待値表 (Run Expectancy Matrix)** (`transform/schema.sql` の `v_run_expectancy`): 走者状況8パターン×アウトカウント3パターン(計24通り)ごとに、そのイニングの残りで平均何点入ったかを、取り込み済みのPlay-by-Playデータから直接算出しています。値は公表されているMLBの得点期待値表とよく一致しており(例: 走者なし0アウトで約0.50点、満塁0アウトで約2.4点、走者なし2アウトで約0.10点)、Play-by-Playパイプライン全体の妥当性を確認する主な手がかりになっています。
+- **勝利確率** (`v_win_probability`): 1シーズン分のPlay-by-Playデータだけでは、イニング×得点差×アウト×走者状況で分割した実績ベースの勝利確率表を作るには標本数が足りないため、得点期待値表を使った近似モデルで計算しています。具体的には、現在の得点差に得点期待値ベースの残り試合の得点予測を加えた「予測最終得点差」を、ロジスティック関数で確率に変換する方式です。本拠地チームの利(ホームアドバンテージ)は考慮しておらず、延長回は9回の延長として扱う簡略化があるため、正確なスポーツブック水準の数値としてではなく、あくまで傾向を示す値として扱ってください。例外的に厳密なのは試合の最後のプレーで、実際の勝者に基づいて必ず勝利確率1.0/0.0に確定させているため、サヨナラプレーのレバレッジは正しく反映されます。
+- **レバレッジ指数** (`v_play_leverage`、テンプレート10で使用): 各打席のレバレッジは、その状況で起こり得たすべての結果を平均する教科書的な定義ではなく、実際に記録された結果による勝利確率の前後差(打席前後のスイング幅)をそのまま使っています。
 
 ## セットアップ
 
@@ -66,6 +76,7 @@ Python 3.11以上が必要です。
 python ingest/lahman.py
 python ingest/retrosheet_gamelogs.py
 python ingest/statcast.py
+python ingest/retrosheet_playbyplay.py
 ```
 
 いずれも `data/processed/mlb.duckdb` にデータを格納します。`data/raw/` にダウンロード済みファイルをキャッシュするため、**一度取得したデータは再ダウンロードしません**(Statcastの打球データは前回取得日からの差分のみ取得、Sprint Speedはシーズン単位、選手IDテーブルは全体で1回のみ取得します)。強制的に再取得したい場合は `--force` を付けてください。
@@ -86,13 +97,15 @@ mlb-record-finder/
   data/raw/          ダウンロードした生データのキャッシュ (gitignore対象)
   data/processed/     mlb.duckdb (単一ファイルDB)
   ingest/
-    lahman.py               Lahman Baseball Databaseの取得・取込
-    retrosheet_gamelogs.py  Retrosheet Game Logsの取得・取込
-    statcast.py              Statcast (pybaseball) の差分取得・取込 (打球データ/Sprint Speed/選手ID台帳)
+    lahman.py                  Lahman Baseball Databaseの取得・取込
+    retrosheet_gamelogs.py     Retrosheet Game Logsの取得・取込
+    statcast.py                 Statcast (pybaseball) の差分取得・取込 (打球データ/Sprint Speed/選手ID台帳)
+    retrosheet_playbyplay.py   Retrosheet Play-by-Playイベントファイルの取得・取込
+    _playbyplay_parser.py      イベントファイル記法のフルスクラッチパーサー
   transform/
-    schema.sql          取り込んだテーブルに対するビュー定義
+    schema.sql          取り込んだテーブルに対するビュー定義 (得点期待値・勝利確率・レバレッジ含む)
   query/
-    templates.py         8つの記録検索テンプレート (SQL/関数)
+    templates.py         10の記録検索テンプレート (SQL/関数)
   i18n/
     ja.py / en.py         UI文言辞書
   cli.py                対話式CLI本体
@@ -114,3 +127,5 @@ CLIのメニュー・プロンプト・エラーメッセージ・結果テー�
 - チームの勝率ウィンドウ検索(テンプレート4)は、シーズンをまたぐ連続試合は対象外です。
 - SABR版のLahmanデータには一部Negro Leaguesの球団・選手データも含まれています(例: New York Black Yankees)。球団名検索で複数候補が出た場合は番号で選択してください。
 - テンプレート6・7(バレル率・期待成績)は打者側の指標のため、投手が打席に立った打球(まれなケース)は打者本人の成績として正しく集計されますが、逆に投手成績としての集計は行っていません。
+- テンプレート9・10の基盤となるRetrosheet Play-by-Play(イベントファイル)データは、デフォルトで直近5シーズンのみ取得対象です。また、Retrosheet側のPlay-by-Play記録自体、1920年代以前は部分的にしか整備されていません(1871年まで遡れるテンプレート4のGame Logsより厳しい制約です)。
+- テンプレート9・10の勝利確率・レバレッジ指数は実績ベースの統計モデルではなく近似計算です。詳細は上記の実装メモを参照してください。

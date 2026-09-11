@@ -12,6 +12,8 @@ STRINGS = {
         "バレル率・Hard-Hit%ランキング (Statcast)",
         "期待成績(xwOBA/xBA/xSLG)ランキングと実成績との乖離 (Statcast)",
         "Sprint Speedランキング (Statcast)",
+        "先頭打者本塁打+サヨナラ本塁打の試合検索 (Retrosheet Play-by-Play)",
+        "レバレッジ指数が最も高かった打席検索 (Retrosheet Play-by-Play)",
     ],
     "menu_exit": "終了",
     "prompt_select": "番号を選択してください",
@@ -41,6 +43,10 @@ STRINGS = {
     "prompt_min_pa": "対象とする最低打席数(PA)を入力してください",
     "prompt_min_sprint_opp": "対象とする最低機会数(min_opp)を入力してください",
 
+    "prompt_leverage_start_date": "検索対象の開始日を入力 (YYYY-MM-DD, 空欄で指定なし)",
+    "prompt_leverage_end_date": "検索対象の終了日を入力 (YYYY-MM-DD, 空欄で指定なし)",
+    "prompt_batter_name_optional": "打者名の一部で絞り込み (空欄で全選手対象, 例: Ohtani)",
+
     "no_results": "条件に一致する結果は見つかりませんでした。",
     "results_count": "{n}件の結果が見つかりました。",
 
@@ -52,7 +58,9 @@ STRINGS = {
 
     "coverage_notice": (
         "注記: 打球速度・飛距離データ(Statcast)は直近2シーズンのみ、\n"
-        "選手・シーズン成績(Lahman、SABR公式版)は2025年シーズンまで対応しています。"
+        "選手・シーズン成績(Lahman、SABR公式版)は2025年シーズンまで対応しています。\n"
+        "Play-by-Playデータ(テンプレート9・10)は直近5シーズンのみ取得対象で、\n"
+        "Retrosheet側の記録精度は1920年代以前は部分的です。"
     ),
 
     "column_labels": {
@@ -99,6 +107,20 @@ STRINGS = {
         "age": "年齢",
         "competitive_runs": "走塁機会数",
         "sprint_speed": "スプリントスピード(ft/s)",
+        "visiting_team": "敵地チーム",
+        "leadoff_batter": "先頭打者",
+        "walkoff_inning": "サヨナラ回",
+        "walkoff_batter": "サヨナラ打者",
+        "final_home_score": "最終得点(本拠地)",
+        "final_away_score": "最終得点(敵地)",
+        "batter_name": "打者",
+        "event_type": "プレー種別",
+        "event_raw": "プレー詳細(原記録)",
+        "win_prob_home_before": "勝利確率(打席前・本拠地)",
+        "win_prob_home_after": "勝利確率(打席後・本拠地)",
+        "leverage_index": "レバレッジ指数",
+        "inning": "イニング",
+        "game_id": "試合ID",
     },
 
     "luck_labels": {

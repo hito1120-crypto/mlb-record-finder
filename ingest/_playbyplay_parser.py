@@ -62,6 +62,7 @@ _PREFIX_RULES: list[tuple[str, str]] = [
     ("PO", "pickoff"),
     ("CS", "caught_stealing"),
     ("DI", "defensive_indifference"),
+    ("FLE", "foul_error"),
     ("E", "reached_on_error"),
     ("FC", "fielders_choice"),
     ("HP", "hit_by_pitch"),
@@ -80,11 +81,14 @@ _PREFIX_RULES: list[tuple[str, str]] = [
 ]
 
 # Event types where the batter does not take a plate appearance (pure
-# baserunning / game events attached to an in-progress at-bat).
+# baserunning / game events attached to an in-progress at-bat). "foul_error"
+# (a fielder drops a catchable foul fly for an error) belongs here too: the
+# ball is foul, so nothing happens to the batter or any runner and the same
+# batter's plate appearance simply continues on the next play.
 _NON_PA_TYPES = {
     "no_play", "balk", "pickoff_caught_stealing", "pickoff", "caught_stealing",
     "defensive_indifference", "other_advance", "passed_ball", "stolen_base",
-    "wild_pitch",
+    "wild_pitch", "foul_error",
 }
 
 # Event types where the batter's default (i.e. if not overridden by an
@@ -114,9 +118,12 @@ def _classify_subcode(code: str) -> str:
     # spelling ("DGR") are checked first: a plain letter+digit code would
     # otherwise fall all the way through to the "other" bucket below, since
     # they're not literal prefixes shared with anything in _PREFIX_RULES.
+    # The fielder digit is optional -- a bare "D" or "T" (all fielding detail
+    # pushed into the "/..." modifiers instead, e.g. "D/F89XD") is still a
+    # double/triple, not an unrecognized code.
     if code.startswith("DGR"):
         return "double"
-    if len(code) >= 2 and code[0] in ("S", "D", "T") and code[1].isdigit():
+    if code and code[0] in ("S", "D", "T") and (len(code) == 1 or code[1].isdigit()):
         return {"S": "single", "D": "double", "T": "triple"}[code[0]]
     for prefix, event_type in _PREFIX_RULES:
         if code.startswith(prefix):
@@ -195,10 +202,25 @@ def _resolve_play(bases: dict[str, str | None], outs: int, event_field: str) -> 
             explicit_origins.add("B")
             outs_on_play += 1  # batter out; no base to clear
 
-    # 2) Default baserunning movement for SB/CS/PO/POCS sub-codes (each
-    #    sub-code names its *destination* base; the runner is assumed to be
-    #    coming from one base back, unless an explicit advance below
-    #    overrides it).
+    # 2) Default baserunning movement for SB/CS/PO/POCS sub-codes.
+    #
+    # SB<dest> and CS<dest> name the base the runner is trying to reach, so
+    # the runner is assumed to be coming from one base back unless an
+    # explicit advance below overrides it -- same for POCS<dest> ("picked
+    # off, caught stealing to <dest>"), which is a runner mid-steal-attempt
+    # just like CS. PO<dest> is different: it means the runner was standing
+    # ON <dest> and got picked off there (no attempted advance), so its
+    # origin base is <dest> itself, not one base back -- using the "one back"
+    # mapping for plain PO (as this used to) silently corrupts bases_after
+    # for every ordinary pickoff: it clears the wrong (usually unoccupied)
+    # base and leaves the actually-picked-off runner still on base in the
+    # returned state.
+    #
+    # A "(E...)" fielding-error modifier on the play means the runner
+    # reached/stayed safely despite the throw (Retrosheet convention), not
+    # out -- e.g. "PO2(E1/TH).2-3" is a botched pickoff plus throwing error
+    # that let the runner advance an extra base, not a putout.
+    has_error = any(e.startswith("E") for e in embedded_outs)
     for code in sub_codes:
         sub_type = _classify_subcode(code)
         if sub_type not in ("stolen_base", "caught_stealing", "pickoff", "pickoff_caught_stealing"):
@@ -207,10 +229,10 @@ def _resolve_play(bases: dict[str, str | None], outs: int, event_field: str) -> 
         if not m:
             continue
         dest = m.group(1)
-        origin = {"2": "1", "3": "2", "H": "3"}.get(dest)
+        origin = dest if sub_type == "pickoff" else {"2": "1", "3": "2", "H": "3"}.get(dest)
         if origin is None or origin in explicit_origins:
             continue
-        is_out = sub_type in ("caught_stealing", "pickoff", "pickoff_caught_stealing")
+        is_out = sub_type in ("caught_stealing", "pickoff", "pickoff_caught_stealing") and not has_error
         if is_out or new_bases.get(origin):
             _score_or_place(origin, dest, is_out)
             explicit_origins.add(origin)

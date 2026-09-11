@@ -31,6 +31,7 @@ REQUIRED_TABLES = {
     "lahman": ["lahman_people", "lahman_batting", "lahman_teams", "lahman_teams_franchises"],
     "retrosheet": ["retrosheet_gamelogs"],
     "statcast": ["statcast_pitches", "statcast_sprint_speed", "player_id_lookup"],
+    "retrosheet_pbp": ["retrosheet_playbyplay"],
 }
 
 
@@ -73,6 +74,11 @@ def ensure_data(con: duckdb.DuckDBPyConnection, S: dict) -> None:
         from ingest import statcast
         statcast.download()
         statcast.load_to_duckdb()
+    if "retrosheet_pbp" in missing_sources:
+        print(S["running_ingest"].format(name="Retrosheet Play-by-Play"))
+        from ingest import retrosheet_playbyplay
+        retrosheet_playbyplay.download()
+        retrosheet_playbyplay.load_to_duckdb()
     print(S["ingest_done"])
 
 
@@ -227,6 +233,22 @@ def handle_sprint_speed(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     print_table(df, S)
 
 
+def handle_leadoff_and_walkoff(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.leadoff_and_walkoff_hr_games(con, limit=limit)
+    print_table(df, S)
+
+
+def handle_highest_leverage(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    start_date = input(S["prompt_leverage_start_date"] + ": ").strip() or None
+    end_date = input(S["prompt_leverage_end_date"] + ": ").strip() or None
+    player_name = input(S["prompt_batter_name_optional"] + ": ").strip() or None
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.highest_leverage_plays(con, start_date=start_date, end_date=end_date,
+                                   player_name=player_name, limit=limit)
+    print_table(df, S)
+
+
 HANDLERS = [
     handle_homerun_search,
     handle_team_career_hr,
@@ -236,6 +258,8 @@ HANDLERS = [
     handle_barrel_hard_hit,
     handle_expected_vs_actual,
     handle_sprint_speed,
+    handle_leadoff_and_walkoff,
+    handle_highest_leverage,
 ]
 
 
