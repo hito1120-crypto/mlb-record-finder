@@ -1,0 +1,74 @@
+"""English UI strings. Mirror of i18n/ja.py -- keep keys identical between the two."""
+
+STRINGS = {
+    "app_title": "MLB Record Finder (mlb-record-finder)",
+    "menu_title": "\n--- Menu: choose a record template to explore ---",
+    "menu_items": [
+        "Search home runs by exit velocity + distance (Statcast)",
+        "All-time HR ranking for a given franchise (Lahman)",
+        "Players who hit two season thresholds (e.g. HR + SB) (Lahman)",
+        "Best winning percentage over any N-game window (Retrosheet)",
+        "Players who hit three season thresholds (e.g. 3B + HR + SB) (Lahman)",
+    ],
+    "menu_exit": "Exit",
+    "prompt_select": "Select a number",
+    "invalid_choice": "Invalid choice, please try again.",
+    "invalid_number": "Please enter a number.",
+    "goodbye": "Goodbye.",
+
+    "prompt_min_exit_velo": "Minimum exit velocity (mph)",
+    "prompt_min_distance": "Minimum distance (ft)",
+    "prompt_result_limit": "Max rows to display (default: {default})",
+
+    "prompt_franchise_search": "Enter part of a team name (e.g. Yankees)",
+    "franchise_no_match": "No matching franchise found, please try again.",
+    "franchise_multiple_matches": "Multiple matches found, pick a number:",
+    "franchise_selected": "Selected franchise: {name} ({franch_id})",
+
+    "prompt_year": "Season year (e.g. 2019)",
+    "prompt_hr_min": "Minimum home runs (HR)",
+    "prompt_sb_min": "Minimum stolen bases (SB)",
+    "prompt_3b_min": "Minimum triples (3B)",
+
+    "prompt_window_games": "Window size N in games (e.g. 10)",
+    "prompt_team_optional": "Team code to filter on (blank = all teams, e.g. NYA)",
+
+    "no_results": "No results matched those conditions.",
+    "results_count": "{n} result(s) found.",
+
+    "data_missing": "Required data has not been ingested yet: {tables}",
+    "run_ingest_prompt": "Run the data ingest scripts now? (y/n)",
+    "running_ingest": "Fetching {name} data... (this only takes a while the first time)",
+    "ingest_done": "Data ingest complete.",
+    "ingest_skipped": "Skipped ingest. Please run ingest/*.py first.",
+
+    "coverage_notice": (
+        "Note: Statcast exit-velocity/distance data covers only the most recent 2 seasons,\n"
+        "and Lahman player/season stats (official SABR edition) cover through the 2025 season."
+    ),
+
+    "column_labels": {
+        "player_name": "Player",
+        "full_name": "Player",
+        "game_date": "Date",
+        "away_team": "Away",
+        "home_team": "Home",
+        "exit_velocity_mph": "Exit Velo (mph)",
+        "distance_ft": "Distance (ft)",
+        "launch_angle_deg": "Launch Angle (deg)",
+        "franchID": "Franchise ID",
+        "career_hr_with_team": "Career HR",
+        "first_year": "First Year",
+        "last_year": "Last Year",
+        "season": "Season",
+        "teams": "Team(s)",
+        "HR": "HR",
+        "SB": "SB",
+        "X3B": "3B",
+        "team": "Team",
+        "window_start_date": "Start Date",
+        "window_end_date": "End Date",
+        "wins": "Wins",
+        "win_pct": "Win %",
+    },
+}
