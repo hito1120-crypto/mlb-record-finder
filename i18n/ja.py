@@ -14,6 +14,7 @@ STRINGS = {
         "Sprint Speedランキング (Statcast)",
         "先頭打者本塁打+サヨナラ本塁打の試合検索 (Retrosheet Play-by-Play)",
         "レバレッジ指数が最も高かった打席検索 (Retrosheet Play-by-Play)",
+        "自由質問モード: 自然文で質問する (Gemini APIがSQLを生成)",
     ],
     "menu_exit": "終了",
     "prompt_select": "番号を選択してください",
@@ -127,5 +128,21 @@ STRINGS = {
         "overperforming": "実績が上回る(幸運)",
         "underperforming": "実績が下回る(不運)",
         "as expected": "ほぼ期待通り",
+    },
+
+    "prompt_free_question": "質問を日本語または英語で自由に入力してください",
+    "nl_no_api_key": (
+        "GEMINI_API_KEY (または GOOGLE_API_KEY) が環境変数に設定されていません。"
+        "自由質問モードを使うには先に設定してください。"
+    ),
+    "nl_generating": "Gemini APIに問い合わせてSQLを生成しています...",
+    "nl_cache_hit": "(前回と同じ質問のため、キャッシュ済みのSQLを再利用しました)",
+    "nl_model_used": "使用モデル: {model}",
+    "nl_sql_label": "--- 生成されたSQL (検算用) ---",
+    "nl_note_label": "補足: {note}",
+    "nl_generation_failed": "SQLの生成に失敗しました: {error}",
+    "nl_caveats": {
+        "19th_century": "注記: 19世紀のデータは記録の完全性に限定的な不安が残ります。",
+        "early_pbp": "注記: この年代のPlay-by-Playデータは部分的です。",
     },
 }

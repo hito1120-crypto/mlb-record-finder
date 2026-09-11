@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ for _stream in (sys.stdout, sys.stderr, sys.stdin):
 
 from i18n import en as i18n_en
 from i18n import ja as i18n_ja
+from query import nl2sql
 from query import templates as q
 
 ROOT = Path(__file__).resolve().parent
@@ -249,6 +251,36 @@ def handle_highest_leverage(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     print_table(df, S)
 
 
+def handle_free_question(con: duckdb.DuckDBPyConnection, S: dict, lang: str) -> None:
+    if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+        print(S["nl_no_api_key"])
+        return
+    question = input(S["prompt_free_question"] + ": ").strip()
+    if not question:
+        return
+
+    print(S["nl_generating"])
+    try:
+        result = nl2sql.answer_natural_language_question(con, question, lang=lang)
+    except nl2sql.NLQueryError as e:
+        print(S["nl_generation_failed"].format(error=e))
+        return
+
+    print(S["nl_sql_label"])
+    print(result.sql)
+    if result.note:
+        print(S["nl_note_label"].format(note=result.note))
+    for code in result.caveats:
+        message = S["nl_caveats"].get(code)
+        if message:
+            print(message)
+    if result.from_cache:
+        print(S["nl_cache_hit"])
+    else:
+        print(S["nl_model_used"].format(model=result.model_used))
+    print_table(result.df, S)
+
+
 HANDLERS = [
     handle_homerun_search,
     handle_team_career_hr,
@@ -272,6 +304,8 @@ def main() -> None:
     print(S["app_title"])
     print(S["coverage_notice"])
 
+    handlers = [*HANDLERS, lambda con, S: handle_free_question(con, S, args.lang)]
+
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(DB_PATH))
     try:
@@ -290,7 +324,7 @@ def main() -> None:
                 break
             try:
                 choice = int(raw)
-                handler = HANDLERS[choice - 1]
+                handler = handlers[choice - 1]
             except (ValueError, IndexError):
                 print(S["invalid_choice"])
                 continue

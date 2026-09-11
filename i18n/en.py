@@ -14,6 +14,7 @@ STRINGS = {
         "Sprint Speed ranking (Statcast)",
         "Games with a leadoff HR AND a walk-off HR (Retrosheet Play-by-Play)",
         "Highest-leverage plate appearances (Retrosheet Play-by-Play)",
+        "Free-form question mode: ask in plain language (Gemini API generates SQL)",
     ],
     "menu_exit": "Exit",
     "prompt_select": "Select a number",
@@ -127,5 +128,21 @@ STRINGS = {
         "overperforming": "Overperforming (lucky)",
         "underperforming": "Underperforming (unlucky)",
         "as expected": "As expected",
+    },
+
+    "prompt_free_question": "Type your question in Japanese or English, in your own words",
+    "nl_no_api_key": (
+        "GEMINI_API_KEY (or GOOGLE_API_KEY) is not set in the environment. "
+        "Set it first to use free-form question mode."
+    ),
+    "nl_generating": "Asking the Gemini API to generate SQL...",
+    "nl_cache_hit": "(Reused cached SQL from an earlier identical question)",
+    "nl_model_used": "Model used: {model}",
+    "nl_sql_label": "--- Generated SQL (for verification) ---",
+    "nl_note_label": "Note: {note}",
+    "nl_generation_failed": "Failed to generate SQL: {error}",
+    "nl_caveats": {
+        "19th_century": "Note: 19th-century data has known limits on record completeness.",
+        "early_pbp": "Note: Play-by-Play data for this era is only partially covered.",
     },
 }
