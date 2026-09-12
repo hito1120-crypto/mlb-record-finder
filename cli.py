@@ -31,6 +31,25 @@ from query import templates as q
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "processed" / "mlb.duckdb"
 SCHEMA_PATH = ROOT / "transform" / "schema.sql"
+ENV_PATH = ROOT / ".env"
+
+
+def _load_dotenv(path: Path) -> None:
+    """Minimal .env loader (no new dependency): sets os.environ from KEY=VALUE
+    lines for any key not already set in the real environment. Used for local
+    secrets like GEMINI_API_KEY -- .env is gitignored, never committed."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv(ENV_PATH)
 
 REQUIRED_TABLES = {
     "lahman": ["lahman_people", "lahman_batting", "lahman_teams", "lahman_teams_franchises"],
