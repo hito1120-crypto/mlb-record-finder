@@ -284,6 +284,14 @@ def handle_bat_speed(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     print_table(df, S)
 
 
+def handle_arm_angle(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    season = prompt_statcast_season(con, S)
+    min_pitches = prompt_int(S["prompt_min_pitches"], S, default=100)
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.arm_angle_ranking(con, season, min_pitches=min_pitches, limit=limit)
+    print_table(df, S)
+
+
 def handle_oaa(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     season = prompt_statcast_season(con, S)
     pos = prompt_oaa_position(con, S)
@@ -335,6 +343,7 @@ HANDLERS = [
     handle_highest_leverage,
     handle_bat_speed,
     handle_oaa,
+    handle_arm_angle,
 ]
 
 

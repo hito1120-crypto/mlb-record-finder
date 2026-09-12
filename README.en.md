@@ -8,7 +8,7 @@ publicly available data.
 
 ## What it does
 
-Run `python cli.py`, pick one of 12 record templates by number, enter a few
+Run `python cli.py`, pick one of 13 record templates by number, enter a few
 parameters (thresholds, a season year, etc.), and it runs SQL against a local
 DuckDB file and prints the results as a table.
 
@@ -24,6 +24,7 @@ DuckDB file and prints the results as a table.
 10. **Highest-leverage plate appearances** (Retrosheet Play-by-Play) -- ranks individual plate appearances by how much they swung the home team's win probability, optionally filtered by date range and/or batter name
 11. **Bat Speed / Swing Length ranking** (Statcast) -- ranks players by average/max bat speed and average swing length for a given season, filterable by a minimum number of tracked swings
 12. **Outs Above Average (OAA) fielding ranking** (Statcast) -- ranks players by OAA (outs saved above an average fielder) and fielding runs prevented for a given season and fielding position (catchers excluded)
+13. **Arm Angle ranking** (Statcast) -- ranks pitchers by average arm angle (release-point angle) for a given season, filterable by a minimum number of tracked pitches
 
 ## Data sources
 
@@ -71,10 +72,11 @@ the script automatically falls back to the previous mirror
 - **Win probability** (`v_win_probability`): there isn't enough ingested history yet for a reliable empirical win-probability table (that would need binning by inning x score-diff x outs x base-state, with only one season of data), so this is a modeled approximation instead -- a projected final score differential (current score + run-expectancy-based projections for the rest of the game) collapsed to a probability via a logistic curve. It has no home-field-advantage term and treats extra innings as a continuation of the 9th, so treat it as directional, not a precise sportsbook-grade number. The one place it's exact rather than modeled: the final play of a game always resolves to win probability 1.0/0.0 for the actual winner, so a walk-off's full leverage swing always shows up correctly.
 - **Leverage index** (`v_play_leverage`, used by template 10): each play's leverage is the actual before/after win-probability swing it produced, not the textbook definition's average over every hypothetical outcome of that base-out-score state.
 
-### Implementation notes for templates 11-12 (the Statcast bat-tracking / fielding add-ons)
+### Implementation notes for templates 11-13 (the Statcast bat-tracking / fielding / arm-angle add-ons)
 
 - **Bat Speed / Swing Length**: `bat_speed` / `swing_length` come straight off the existing `statcast_pitches` columns -- no new ingest step was needed, since Baseball Savant added these to the same pitch-level CSV export, so simply re-running `ingest/statcast.py` picked them up. Both columns are non-null only on pitches where the batter actually swung (~46% of pitches in a sampled day), which is why `min_swings` counts swings, not pitches.
 - **Outs Above Average (OAA)**: not present anywhere in the pitch-level data, so this uses Baseball Savant's own precomputed season leaderboard (`pybaseball.statcast_outs_above_average(year, pos, min_att, view="Fielder")`). **The same player's OAA changes depending on which position it's queried for** (e.g. a utility infielder shows a different number under `2B` than under the `IF` aggregate), so each (season, position) combination is fetched and cached separately (`data/raw/statcast/oaa/`), with the queried position stored as its own `pos` column on the `statcast_oaa` table. The positions fetched are the 7 individual fielding positions (1B/2B/3B/SS/LF/CF/RF) plus Savant's own IF/OF/ALL aggregate buckets (ALL excludes catchers). Catchers are excluded entirely because the leaderboard itself doesn't cover them. The leaderboard CSV also has no attempts/opportunities column, so unlike Sprint Speed's `min_opp` the threshold can't be relaxed at query time -- it's fixed at Savant's own "qualified" cutoff (`min_att="q"`) when fetched. The leaderboard's directional (front/back/lateral) and batter-handedness breakdowns are ingested into `statcast_oaa` but deliberately left out of template 12's ranking display, which shows only the headline metrics (OAA, fielding runs prevented, catch success rates).
+- **Arm Angle**: like `bat_speed`, `arm_angle` arrived as an existing `statcast_pitches` column with no new ingest step needed. Unlike bat speed, though, it's a pitcher release-point measurement rather than something tied to whether the batter swung, so it's non-null on roughly 94% of all pitches (confirmed against the ingested data) -- which is why `min_pitches` counts pitches, not swings. It also needs no `player_id_lookup` join, unlike templates 6-7's batter-side leaderboards: `statcast_pitches.player_name` is already the pitcher's name (see the templates 6-8 note above), so it's used directly. A given pitcher's arm angle isn't perfectly constant across a season (a sampled check found a standard deviation of roughly 3-5 degrees per pitcher), so this ranking shows the season average.
 
 ## Setup
 
@@ -134,7 +136,7 @@ mlb-record-finder/
     schema.sql          views built on top of the ingested tables
                          (incl. run expectancy / win probability / leverage)
   query/
-    templates.py         the 12 record-search templates (SQL/functions)
+    templates.py         the 13 record-search templates (SQL/functions)
   i18n/
     ja.py / en.py         UI string dictionaries
   cli.py                the interactive CLI
@@ -176,3 +178,6 @@ original (English) form rather than being translated.
   leaderboard doesn't cover them. Its attempts threshold is also fixed at
   Savant's "qualified" cutoff and, unlike template 8's Sprint Speed, cannot
   be changed at query time.
+- Template 13 (Arm Angle) ranks season averages only; it doesn't break out
+  per-pitch-type differences (a pitcher's arm angle can shift a few degrees
+  between, say, a slider and a four-seam fastball).

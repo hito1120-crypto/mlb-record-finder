@@ -16,6 +16,7 @@ STRINGS = {
         "レバレッジ指数が最も高かった打席検索 (Retrosheet Play-by-Play)",
         "バットスピード・スイング長ランキング (Statcast)",
         "OAA (Outs Above Average) 守備ランキング (Statcast)",
+        "アームアングル(投球時の腕の角度)ランキング (Statcast)",
         "自由質問モード: 自然文で質問する (Gemini APIがSQLを生成)",
     ],
     "menu_exit": "終了",
@@ -46,6 +47,7 @@ STRINGS = {
     "prompt_min_pa": "対象とする最低打席数(PA)を入力してください",
     "prompt_min_sprint_opp": "対象とする最低機会数(min_opp)を入力してください",
     "prompt_min_swings": "対象とする最低スイング数を入力してください",
+    "prompt_min_pitches": "対象とする最低投球数を入力してください",
     "prompt_oaa_position": "守備位置を番号で選択してください",
     "oaa_catcher_notice": (
         "対象の守備位置を選んでください "
@@ -153,6 +155,10 @@ STRINGS = {
         "actual_success_rate": "実際の捕球成功率(%)",
         "adj_estimated_success_rate": "推定捕球成功率(%)",
         "diff_success_rate": "成功率の差(%)",
+        "pitches": "投球数",
+        "avg_arm_angle": "平均アームアングル(度)",
+        "min_arm_angle": "最小アームアングル(度)",
+        "max_arm_angle": "最大アームアングル(度)",
     },
 
     "luck_labels": {

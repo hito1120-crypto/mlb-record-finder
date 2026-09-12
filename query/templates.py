@@ -409,15 +409,18 @@ def highest_leverage_plays(con: duckdb.DuckDBPyConnection,
 
 # --- Statcast bat-tracking / arm-angle templates (Phase 4) -------------------
 #
-# bat_speed / swing_length (and, for a later template, arm_angle) are plain
-# columns on statcast_pitches already -- Baseball Savant added them to the
-# same pitch-level CSV export that ingest/statcast.py pulls via
-# pybaseball.statcast(), so no new ingest step or API call was needed; simply
-# re-running ingest/statcast.py's load_to_duckdb() against the already-cached
-# parquet files picked them up. Confirmed via a throwaway pybaseball venv
-# (see the Phase 4 investigation) that both columns are non-null only on
-# pitches where the batter actually took a swing (~46% of pitches in a
-# sampled day), which is why min_swings below counts swings, not pitches.
+# bat_speed / swing_length / arm_angle are plain columns on statcast_pitches
+# already -- Baseball Savant added them to the same pitch-level CSV export
+# that ingest/statcast.py pulls via pybaseball.statcast(), so no new ingest
+# step or API call was needed; simply re-running ingest/statcast.py's
+# load_to_duckdb() against the already-cached parquet files picked them up.
+# Confirmed via a throwaway pybaseball venv (see the Phase 4 investigation)
+# that bat_speed/swing_length are non-null only on pitches where the batter
+# actually took a swing (~46% of pitches in a sampled day), which is why
+# min_swings below counts swings, not pitches. arm_angle is different: it's
+# a pitcher-release-point measurement, non-null on ~94% of all pitches
+# (confirmed against the ingested data), so the arm-angle template below
+# counts pitches, not swings, for its min-sample threshold.
 
 def bat_speed_ranking(con: duckdb.DuckDBPyConnection, season: int,
                        min_swings: int = 50, limit: int = 50) -> pd.DataFrame:
@@ -444,6 +447,34 @@ def bat_speed_ranking(con: duckdb.DuckDBPyConnection, season: int,
         LIMIT ?
         """,
         [season, min_swings, limit],
+    ).fetchdf()
+
+
+def arm_angle_ranking(con: duckdb.DuckDBPyConnection, season: int,
+                       min_pitches: int = 100, limit: int = 50) -> pd.DataFrame:
+    """Template 13: Arm Angle ranking for a season, averaged per pitcher
+    (min_pitches = minimum tracked pitches with a non-null arm_angle).
+
+    No player_id_lookup join is needed here, unlike the batter-side
+    leaderboards above: statcast_pitches.player_name is already the pitcher
+    throwing the pitch (see this module's top-of-file note)."""
+    return con.execute(
+        """
+        SELECT
+            player_name,
+            COUNT(*) AS pitches,
+            AVG(arm_angle) AS avg_arm_angle,
+            MIN(arm_angle) AS min_arm_angle,
+            MAX(arm_angle) AS max_arm_angle
+        FROM statcast_pitches
+        WHERE game_year = ?
+          AND arm_angle IS NOT NULL
+        GROUP BY player_name
+        HAVING COUNT(*) >= ?
+        ORDER BY avg_arm_angle DESC
+        LIMIT ?
+        """,
+        [season, min_pitches, limit],
     ).fetchdf()
 
 

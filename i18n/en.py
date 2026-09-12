@@ -16,6 +16,7 @@ STRINGS = {
         "Highest-leverage plate appearances (Retrosheet Play-by-Play)",
         "Bat Speed / Swing Length ranking (Statcast)",
         "Outs Above Average (OAA) fielding ranking (Statcast)",
+        "Arm Angle ranking (Statcast)",
         "Free-form question mode: ask in plain language (Gemini API generates SQL)",
     ],
     "menu_exit": "Exit",
@@ -46,6 +47,7 @@ STRINGS = {
     "prompt_min_pa": "Minimum plate appearances (PA)",
     "prompt_min_sprint_opp": "Minimum sprint opportunities (min_opp)",
     "prompt_min_swings": "Minimum tracked swings",
+    "prompt_min_pitches": "Minimum tracked pitches",
     "prompt_oaa_position": "Select a position by number",
     "oaa_catcher_notice": (
         "Choose a fielding position "
@@ -153,6 +155,10 @@ STRINGS = {
         "actual_success_rate": "Actual Success Rate (%)",
         "adj_estimated_success_rate": "Est. Success Rate (%)",
         "diff_success_rate": "Success Rate Diff (%)",
+        "pitches": "Pitches",
+        "avg_arm_angle": "Avg Arm Angle (deg)",
+        "min_arm_angle": "Min Arm Angle (deg)",
+        "max_arm_angle": "Max Arm Angle (deg)",
     },
 
     "luck_labels": {
