@@ -31,7 +31,7 @@
 |---|---|---|
 | [Lahman Baseball Database (SABR公式版)](https://sabr.box.com/s/y1prhc795jk8zvmelfd3jq7tl389y6cd) | シーズン・通算成績(打撃・投球・守備・受賞歴) | 1871年〜2025年シーズン |
 | [Retrosheet Game Logs](https://www.retrosheet.org/gamelogs/index.html) | チーム単位の試合ごとの勝敗・スコア | 1871年〜現在 |
-| [pybaseball](https://github.com/jldbc/pybaseball) 経由の Statcast (Baseball Savant) | 打球速度・飛距離・回転数等 | 直近2シーズンのみ取得 |
+| [pybaseball](https://github.com/jldbc/pybaseball) 経由の Statcast (Baseball Savant) | 打球速度・飛距離・回転数等 | 2015年シーズン以降(Statcast全球追跡開始以降) |
 | [Retrosheet Play-by-Play (イベントファイル)](https://www.retrosheet.org/events/index.html) | 打席単位の走者状況・スコア・プレー結果 | デフォルトで直近5シーズンのみ取得。Retrosheet側のPlay-by-Play記録自体、1920年代以前は部分的(後述) |
 
 Lahman Baseball Database は、かつての配布元だった `chadwickbureau/baseballdatabank` リポジトリがGitHub上から削除されて以降、SABR (Society for American Baseball Research) が公式に引き継いでメンテナンスしています。本ツールはSABRが公開しているBox.com上のCSV版(`lahman_1871-2025_csv` フォルダ、2026年1月リリース、2025年シーズンまで収録)を取得元としています。このBox.comフォルダのページ上には明示的なライセンス表記が見当たりません(SABRサイト内のNegro Leaguesデータ部分のみSeamheads.comのライセンス表記があります)。そのため本ツールでの利用は個人利用・研究利用の範囲を前提としています。
@@ -132,7 +132,7 @@ CLIのメニュー・プロンプト・エラーメッセージ・結果テー�
 ## 既知の制約
 
 - Lahmanデータは2025年シーズンまで(SABR公式版、上記参照)。
-- Statcastは直近2シーズンのみ取得(全期間の取得はスコープ外)。
+- Statcastは2015年シーズン以降を対象に取得(シーズン単位で順次バックフィル中。取得済み範囲は `data/raw/statcast/manifest.json` を参照)。
 - チームの勝率ウィンドウ検索(テンプレート4)は、シーズンをまたぐ連続試合は対象外です。
 - SABR版のLahmanデータには一部Negro Leaguesの球団・選手データも含まれています(例: New York Black Yankees)。球団名検索で複数候補が出た場合は番号で選択してください。
 - テンプレート6・7(バレル率・期待成績)は打者側の指標のため、投手が打席に立った打球(まれなケース)は打者本人の成績として正しく集計されますが、逆に投手成績としての集計は行っていません。

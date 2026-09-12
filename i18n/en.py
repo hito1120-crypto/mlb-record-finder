@@ -68,7 +68,7 @@ STRINGS = {
     "ingest_skipped": "Skipped ingest. Please run ingest/*.py first.",
 
     "coverage_notice": (
-        "Note: Statcast exit-velocity/distance data covers only the most recent 2 seasons,\n"
+        "Note: Statcast exit-velocity/distance data covers the 2015 season onward,\n"
         "and Lahman player/season stats (official SABR edition) cover through the 2025 season.\n"
         "Play-by-Play data (templates 9-10) is only fetched for the most recent 5 seasons, and\n"
         "Retrosheet's own play-by-play coverage is only partial before the 1920s."

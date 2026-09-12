@@ -1,13 +1,28 @@
 """Statcast (Baseball Savant) ingest via pybaseball.
 
-Scope, per project spec: only the most recent 2 seasons (not the full
-2015-present history). pybaseball.statcast() already issues one HTTP
-request per day internally for multi-day ranges; on top of that, this
-script caches each day's pull as its own parquet file under
+Scope, per project spec: the full 2015-present history (Statcast's full
+pitch-tracking era). pybaseball.statcast() already issues one HTTP request
+per day internally for multi-day ranges, so a single call already covers a
+whole season's worth of daily scraping; on top of that, this script caches
+each day's pull as its own parquet file under
 data/raw/statcast/<season>/<date>.parquet and records, per season, the
 last date successfully queried in manifest.json. Every re-run only asks
 Baseball Savant for dates after that point, so nothing already fetched is
 ever requested again.
+
+Seasons are processed one at a time, newest first (already-cached recent
+seasons are skipped almost instantly, so the first season that actually
+does real work is the most recent not-yet-fetched one -- convenient for a
+quick smoke test before kicking off the full 2015-present backfill).
+Each season's daily parquet files are merged into the statcast_pitches
+DuckDB table immediately after that season's fetch completes, before
+moving on to the next season, so an interrupted multi-year backfill never
+loses already-completed seasons: on restart, download() resumes from
+manifest.json (skipping or continuing partially-fetched seasons) and
+already-loaded seasons are already sitting in DuckDB. If a season's fetch
+raises (Baseball Savant has known gaps for some 2015 dates), it is logged
+and skipped -- manifest.json is left untouched for that season, so the
+next run simply retries it -- rather than aborting the whole backfill.
 
 Also fetches the Sprint Speed leaderboard (pybaseball.statcast_sprint_speed)
 for the same seasons. Unlike the pitch-level data above, Sprint Speed is
@@ -60,7 +75,7 @@ MANIFEST_PATH = RAW_DIR / "manifest.json"
 
 SEASON_START_MONTH_DAY = (3, 1)   # earliest plausible date to query per season
 SEASON_END_MONTH_DAY = (11, 30)   # latest plausible date (covers postseason)
-N_RECENT_SEASONS = 2
+EARLIEST_SEASON = 2015  # start of Statcast's full pitch-tracking era
 
 SPRINT_SPEED_DIR = RAW_DIR / "sprint_speed"
 SPRINT_SPEED_FETCH_MIN_OPP = 1  # broad cache; real filtering happens at query time
@@ -102,8 +117,9 @@ PLAYER_ID_LOOKUP_PATH = RAW_DIR / "player_id_lookup.parquet"
 
 
 def _target_seasons() -> list[int]:
+    """All seasons from EARLIEST_SEASON through this year, newest first."""
     current_year = dt.date.today().year
-    return [current_year - (N_RECENT_SEASONS - 1) + i for i in range(N_RECENT_SEASONS)]
+    return list(range(current_year, EARLIEST_SEASON - 1, -1))
 
 
 def _load_manifest() -> dict:
@@ -148,7 +164,11 @@ def download(force: bool = False) -> None:
 
         print(f"[statcast] {season}: fetching {start} to {season_end} "
               f"(pybaseball issues one request per day)")
-        df = statcast(start_dt=start.isoformat(), end_dt=season_end.isoformat(), verbose=False)
+        try:
+            df = statcast(start_dt=start.isoformat(), end_dt=season_end.isoformat(), verbose=False)
+        except Exception as exc:  # Savant has known gaps for some early (2015) dates
+            print(f"[statcast] {season}: fetch failed, skipping this season for now ({exc})")
+            continue
 
         if df is not None and not df.empty and "game_date" in df.columns:
             df["game_date"] = pd.to_datetime(df["game_date"]).dt.date
@@ -163,6 +183,10 @@ def download(force: bool = False) -> None:
 
         manifest[str(season)] = season_end.isoformat()
         _save_manifest(manifest)
+
+        # Merge this season into DuckDB right away so an interrupted
+        # multi-year backfill doesn't lose already-completed seasons.
+        load_pitches_to_duckdb()
 
     download_sprint_speed(force=force)
     download_oaa(force=force)
@@ -260,20 +284,32 @@ def download_oaa(force: bool = False) -> None:
             print(f"[statcast] OAA {season} {code}: saved {len(df)} players")
 
 
-def load_to_duckdb() -> None:
+def load_pitches_to_duckdb() -> None:
     files = sorted(RAW_DIR.glob("[12][0-9][0-9][0-9]/*.parquet"))
     if not files:
         print("[statcast] no cached pitch-level parquet files found; run download first")
-    else:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        con = duckdb.connect(str(DB_PATH))
-        try:
-            file_globs = str(RAW_DIR / "[12][0-9][0-9][0-9]" / "*.parquet")
-            con.execute(f"CREATE OR REPLACE TABLE statcast_pitches AS SELECT * FROM read_parquet('{file_globs}')")
-            n = con.execute("SELECT COUNT(*) FROM statcast_pitches").fetchone()[0]
-            print(f"[statcast] loaded statcast_pitches ({n:,} rows, {len(files)} day-files) into {DB_PATH}")
-        finally:
-            con.close()
+        return
+
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(DB_PATH))
+    try:
+        file_globs = str(RAW_DIR / "[12][0-9][0-9][0-9]" / "*.parquet")
+        # union_by_name: seasons before Statcast added bat_speed/swing_length
+        # (2023+) and arm_angle (2020+) lack those columns entirely, so the
+        # per-day files across the full 2015-present range don't share one
+        # fixed schema.
+        con.execute(
+            f"CREATE OR REPLACE TABLE statcast_pitches AS "
+            f"SELECT * FROM read_parquet('{file_globs}', union_by_name=true)"
+        )
+        n = con.execute("SELECT COUNT(*) FROM statcast_pitches").fetchone()[0]
+        print(f"[statcast] loaded statcast_pitches ({n:,} rows, {len(files)} day-files) into {DB_PATH}")
+    finally:
+        con.close()
+
+
+def load_to_duckdb() -> None:
+    load_pitches_to_duckdb()
 
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -326,7 +362,7 @@ def load_to_duckdb() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest recent-season Statcast data into DuckDB.")
+    parser = argparse.ArgumentParser(description="Ingest full-history (2015-present) Statcast data into DuckDB.")
     parser.add_argument("--force", action="store_true",
                          help="re-fetch the full season range even if a cache position is recorded")
     args = parser.parse_args()

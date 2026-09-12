@@ -34,7 +34,7 @@ All free and publicly available.
 |---|---|---|
 | [Lahman Baseball Database (official SABR edition)](https://sabr.box.com/s/y1prhc795jk8zvmelfd3jq7tl389y6cd) | Season/career batting, pitching, fielding, and awards | 1871 through the 2025 season |
 | [Retrosheet Game Logs](https://www.retrosheet.org/gamelogs/index.html) | Team-level game-by-game results and scores | 1871-present |
-| [pybaseball](https://github.com/jldbc/pybaseball)'s Statcast (Baseball Savant) | Exit velocity, distance, spin rate, etc. | Most recent 2 seasons only |
+| [pybaseball](https://github.com/jldbc/pybaseball)'s Statcast (Baseball Savant) | Exit velocity, distance, spin rate, etc. | 2015 season onward (start of Statcast's full pitch-tracking era) |
 | [Retrosheet Play-by-Play (event files)](https://www.retrosheet.org/events/index.html) | Per-plate-appearance base/out state, score, and play outcome | Most recent 5 seasons fetched by default; Retrosheet's own play-by-play coverage is only partial before the 1920s (see the caveat below) |
 
 The Lahman Baseball Database is now officially maintained by SABR (Society
@@ -157,8 +157,8 @@ original (English) form rather than being translated.
 ## Known limitations
 
 - Lahman data goes through the 2025 season (official SABR edition, see above).
-- Statcast ingest is limited to the most recent 2 seasons (fetching full
-  history back to 2015 is out of scope).
+- Statcast ingest covers the 2015 season onward (backfilled season by
+  season; see `data/raw/statcast/manifest.json` for what's fetched so far).
 - The winning-percentage window search (template 4) does not consider
   windows that span across a season boundary.
 - The SABR edition of the Lahman data includes some Negro Leagues teams and
