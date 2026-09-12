@@ -22,6 +22,9 @@ for _stream in (sys.stdout, sys.stderr, sys.stdin):
 
 from i18n import en as i18n_en
 from i18n import ja as i18n_ja
+# Only a constant (the canonical OAA position codes) -- ingest/statcast.py
+# keeps its pybaseball imports lazy, so this costs nothing at startup.
+from ingest.statcast import OAA_POSITIONS
 from query import nl2sql
 from query import templates as q
 
@@ -32,7 +35,8 @@ SCHEMA_PATH = ROOT / "transform" / "schema.sql"
 REQUIRED_TABLES = {
     "lahman": ["lahman_people", "lahman_batting", "lahman_teams", "lahman_teams_franchises"],
     "retrosheet": ["retrosheet_gamelogs"],
-    "statcast": ["statcast_pitches", "statcast_sprint_speed", "player_id_lookup"],
+    "statcast": ["statcast_pitches", "statcast_sprint_speed", "statcast_oaa",
+                 "player_id_lookup"],
     "retrosheet_pbp": ["retrosheet_playbyplay"],
 }
 
@@ -171,6 +175,27 @@ def prompt_statcast_season(con: duckdb.DuckDBPyConnection, S: dict) -> int:
     return prompt_int(prompt, S, default=default)
 
 
+def prompt_oaa_position(con: duckdb.DuckDBPyConnection, S: dict) -> str:
+    """Pick one of the OAA leaderboard's positions. The options come from
+    what's actually in statcast_oaa, ordered by OAA_POSITIONS so the list
+    reads 1B..RF then the IF/OF/ALL aggregates rather than alphabetically."""
+    available = {r[0] for r in con.execute(
+        "SELECT DISTINCT pos FROM statcast_oaa"
+    ).fetchall()}
+    codes = [c for c in OAA_POSITIONS if c in available]
+    if not codes:
+        codes = list(OAA_POSITIONS)
+    labels = S["oaa_position_labels"]
+    print(S["oaa_catcher_notice"])
+    for i, code in enumerate(codes, start=1):
+        print(f"  {i}. {labels.get(code, code)}")
+    while True:
+        choice = prompt_int(S["prompt_oaa_position"], S, default=len(codes))
+        if 1 <= choice <= len(codes):
+            return codes[choice - 1]
+        print(S["invalid_choice"])
+
+
 def handle_homerun_search(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     min_velo = prompt_float(S["prompt_min_exit_velo"], S)
     min_dist = prompt_float(S["prompt_min_distance"], S)
@@ -259,6 +284,14 @@ def handle_bat_speed(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     print_table(df, S)
 
 
+def handle_oaa(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    season = prompt_statcast_season(con, S)
+    pos = prompt_oaa_position(con, S)
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.oaa_ranking(con, season, pos=pos, limit=limit)
+    print_table(df, S)
+
+
 def handle_free_question(con: duckdb.DuckDBPyConnection, S: dict, lang: str) -> None:
     if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
         print(S["nl_no_api_key"])
@@ -301,6 +334,7 @@ HANDLERS = [
     handle_leadoff_and_walkoff,
     handle_highest_leverage,
     handle_bat_speed,
+    handle_oaa,
 ]
 
 

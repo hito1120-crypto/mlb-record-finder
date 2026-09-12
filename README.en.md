@@ -8,7 +8,7 @@ publicly available data.
 
 ## What it does
 
-Run `python cli.py`, pick one of 10 record templates by number, enter a few
+Run `python cli.py`, pick one of 12 record templates by number, enter a few
 parameters (thresholds, a season year, etc.), and it runs SQL against a local
 DuckDB file and prints the results as a table.
 
@@ -22,6 +22,8 @@ DuckDB file and prints the results as a table.
 8. **Sprint Speed ranking** (Statcast) -- ranks a season's fastest players by Sprint Speed
 9. **Games with a leadoff HR AND a walk-off HR** (Retrosheet Play-by-Play) -- finds games where the very first plate appearance of the game was a home run and the game also ended on a walk-off home run
 10. **Highest-leverage plate appearances** (Retrosheet Play-by-Play) -- ranks individual plate appearances by how much they swung the home team's win probability, optionally filtered by date range and/or batter name
+11. **Bat Speed / Swing Length ranking** (Statcast) -- ranks players by average/max bat speed and average swing length for a given season, filterable by a minimum number of tracked swings
+12. **Outs Above Average (OAA) fielding ranking** (Statcast) -- ranks players by OAA (outs saved above an average fielder) and fielding runs prevented for a given season and fielding position (catchers excluded)
 
 ## Data sources
 
@@ -68,6 +70,11 @@ the script automatically falls back to the previous mirror
 - **Run Expectancy Matrix** (`v_run_expectancy` in `transform/schema.sql`): the average runs scored for the rest of a half-inning, for each of the 8 base states x 3 out counts (24 combinations), computed directly from the ingested play-by-play. Values line up with published MLB run-expectancy tables (e.g. bases empty/0 outs ~0.50, bases loaded/0 outs ~2.4, bases empty/2 outs ~0.10), which is the main sanity check for the whole play-by-play pipeline.
 - **Win probability** (`v_win_probability`): there isn't enough ingested history yet for a reliable empirical win-probability table (that would need binning by inning x score-diff x outs x base-state, with only one season of data), so this is a modeled approximation instead -- a projected final score differential (current score + run-expectancy-based projections for the rest of the game) collapsed to a probability via a logistic curve. It has no home-field-advantage term and treats extra innings as a continuation of the 9th, so treat it as directional, not a precise sportsbook-grade number. The one place it's exact rather than modeled: the final play of a game always resolves to win probability 1.0/0.0 for the actual winner, so a walk-off's full leverage swing always shows up correctly.
 - **Leverage index** (`v_play_leverage`, used by template 10): each play's leverage is the actual before/after win-probability swing it produced, not the textbook definition's average over every hypothetical outcome of that base-out-score state.
+
+### Implementation notes for templates 11-12 (the Statcast bat-tracking / fielding add-ons)
+
+- **Bat Speed / Swing Length**: `bat_speed` / `swing_length` come straight off the existing `statcast_pitches` columns -- no new ingest step was needed, since Baseball Savant added these to the same pitch-level CSV export, so simply re-running `ingest/statcast.py` picked them up. Both columns are non-null only on pitches where the batter actually swung (~46% of pitches in a sampled day), which is why `min_swings` counts swings, not pitches.
+- **Outs Above Average (OAA)**: not present anywhere in the pitch-level data, so this uses Baseball Savant's own precomputed season leaderboard (`pybaseball.statcast_outs_above_average(year, pos, min_att, view="Fielder")`). **The same player's OAA changes depending on which position it's queried for** (e.g. a utility infielder shows a different number under `2B` than under the `IF` aggregate), so each (season, position) combination is fetched and cached separately (`data/raw/statcast/oaa/`), with the queried position stored as its own `pos` column on the `statcast_oaa` table. The positions fetched are the 7 individual fielding positions (1B/2B/3B/SS/LF/CF/RF) plus Savant's own IF/OF/ALL aggregate buckets (ALL excludes catchers). Catchers are excluded entirely because the leaderboard itself doesn't cover them. The leaderboard CSV also has no attempts/opportunities column, so unlike Sprint Speed's `min_opp` the threshold can't be relaxed at query time -- it's fixed at Savant's own "qualified" cutoff (`min_att="q"`) when fetched. The leaderboard's directional (front/back/lateral) and batter-handedness breakdowns are ingested into `statcast_oaa` but deliberately left out of template 12's ranking display, which shows only the headline metrics (OAA, fielding runs prevented, catch success rates).
 
 ## Setup
 
@@ -120,14 +127,14 @@ mlb-record-finder/
     lahman.py                  fetch/load the Lahman Baseball Database
     retrosheet_gamelogs.py     fetch/load Retrosheet game logs
     statcast.py                 incrementally fetch/load Statcast via pybaseball
-                                 (pitch data / Sprint Speed / player ID lookup)
+                                 (pitch data / Sprint Speed / OAA / player ID lookup)
     retrosheet_playbyplay.py   fetch/load Retrosheet play-by-play event files
     _playbyplay_parser.py      from-scratch parser for the event-file grammar
   transform/
     schema.sql          views built on top of the ingested tables
                          (incl. run expectancy / win probability / leverage)
   query/
-    templates.py         the 10 record-search templates (SQL/functions)
+    templates.py         the 12 record-search templates (SQL/functions)
   i18n/
     ja.py / en.py         UI string dictionaries
   cli.py                the interactive CLI
@@ -165,3 +172,7 @@ original (English) form rather than being translated.
   which cover back to 1871.
 - Templates 9-10's win probability and leverage index are approximations,
   not an empirical model -- see the implementation notes above.
+- Template 12 (OAA) excludes catchers, since Baseball Savant's own
+  leaderboard doesn't cover them. Its attempts threshold is also fixed at
+  Savant's "qualified" cutoff and, unlike template 8's Sprint Speed, cannot
+  be changed at query time.

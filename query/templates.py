@@ -445,3 +445,47 @@ def bat_speed_ranking(con: duckdb.DuckDBPyConnection, season: int,
         """,
         [season, min_swings, limit],
     ).fetchdf()
+
+
+# --- Statcast fielding (OAA) template (Phase 4) ------------------------------
+#
+# Outs Above Average is a precomputed Baseball Savant leaderboard, not a
+# pitch-level column, so it arrives via ingest/statcast.py's download_oaa()
+# rather than out of statcast_pitches. The one thing to know when reading
+# the query below: `pos` is the position the leaderboard was *queried* for
+# (which set of fielding chances the OAA counts), while `primary_position`
+# is where that player mostly played. They often differ -- a 2B who spent
+# time in left shows up under both "2B" and "OF" with different OAA values
+# -- which is why pos is a filter column and not just cosmetic. See that
+# ingest module's docstring for the rest of the leaderboard's quirks
+# (no attempts column, catchers excluded).
+
+def oaa_ranking(con: duckdb.DuckDBPyConnection, season: int, pos: str = "ALL",
+                 limit: int = 50) -> pd.DataFrame:
+    """Template 12: Outs Above Average (OAA) fielding ranking for a season at
+    a given position (pos is one of ingest.statcast.OAA_POSITIONS' canonical
+    codes: 1B/2B/3B/SS/LF/CF/RF, the IF/OF aggregates, or ALL).
+
+    Only the headline metrics are returned; the leaderboard's directional and
+    batter-handedness breakdowns (outs_above_average_infront / _behind /
+    _lateral_* / _rhh / _lhh) are ingested into statcast_oaa but deliberately
+    left out of this ranking."""
+    return con.execute(
+        """
+        SELECT
+            full_name,
+            team,
+            primary_position,
+            outs_above_average,
+            fielding_runs_prevented,
+            actual_success_rate,
+            adj_estimated_success_rate,
+            diff_success_rate
+        FROM statcast_oaa
+        WHERE season = ?
+          AND pos = ?
+        ORDER BY outs_above_average DESC, fielding_runs_prevented DESC
+        LIMIT ?
+        """,
+        [season, pos.upper(), limit],
+    ).fetchdf()

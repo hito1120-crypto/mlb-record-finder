@@ -19,6 +19,19 @@ low min_opp so the on-disk cache is broad; the minimum-opportunities
 threshold used for ranking is applied later, at query time (see
 query/templates.py), so it can be changed without re-fetching.
 
+Also fetches the Outs Above Average (OAA) fielding leaderboard
+(pybaseball.statcast_outs_above_average). Like Sprint Speed this is a
+precomputed leaderboard rather than a pitch-level column, but unlike Sprint
+Speed it is published per (season, POSITION): the same player gets a
+different OAA depending on which position's fielding chances are counted
+(a 2B who also plays some LF has one number under "2B" and another under
+"OF"), so the queried position is part of the cache key and is stored as
+its own `pos` column. Two further quirks, both confirmed against the live
+leaderboard: the CSV carries no attempts/opportunities count, so unlike
+Sprint Speed's min_opp the attempts threshold cannot be re-applied at query
+time and is fixed here at Savant's "qualified" cutoff; and catchers are not
+covered at all (pybaseball raises ValueError for pos=2).
+
 Also fetches the Chadwick player ID register (pybaseball.chadwick_register),
 a one-time (not per-season) MLBAM-ID-to-name crosswalk. This is needed
 because the raw Statcast pitch rows' `player_name` column is the PITCHER
@@ -51,6 +64,39 @@ N_RECENT_SEASONS = 2
 
 SPRINT_SPEED_DIR = RAW_DIR / "sprint_speed"
 SPRINT_SPEED_FETCH_MIN_OPP = 1  # broad cache; real filtering happens at query time
+
+OAA_DIR = RAW_DIR / "oaa"
+# Canonical position code -> the `pos` argument pybaseball expects. Catcher
+# is deliberately absent (see module docstring). "IF"/"OF"/"ALL" are the
+# leaderboard's own aggregate buckets, not derivable by summing the
+# individual positions, so they are fetched as their own rows.
+OAA_POSITIONS = {
+    "1B": 3,
+    "2B": 4,
+    "3B": 5,
+    "SS": 6,
+    "LF": 7,
+    "CF": 8,
+    "RF": 9,
+    "IF": "IF",
+    "OF": "OF",
+    "ALL": "all",
+}
+# Unlike Sprint Speed's min_opp this can't be relaxed at query time -- the
+# leaderboard CSV has no attempts column -- so we cache Savant's own
+# "qualified" leaderboard.
+OAA_FETCH_MIN_ATT = "q"
+OAA_COLUMN_RENAMES = {
+    "display_team_name": "team",
+    "primary_pos_formatted": "primary_position",
+    "year": "season",
+}
+# Savant returns these as strings like "89%" / "-2%"; stored as plain numbers.
+OAA_RATE_COLUMNS = {
+    "actual_success_rate_formatted": "actual_success_rate",
+    "adj_estimated_success_rate_formatted": "adj_estimated_success_rate",
+    "diff_success_rate_formatted": "diff_success_rate",
+}
 
 PLAYER_ID_LOOKUP_PATH = RAW_DIR / "player_id_lookup.parquet"
 
@@ -119,6 +165,7 @@ def download(force: bool = False) -> None:
         _save_manifest(manifest)
 
     download_sprint_speed(force=force)
+    download_oaa(force=force)
     download_player_id_lookup(force=force)
 
 
@@ -136,6 +183,19 @@ def download_player_id_lookup(force: bool = False) -> None:
     df["key_mlbam"] = df["key_mlbam"].astype("int64")
     df.to_parquet(PLAYER_ID_LOOKUP_PATH, index=False)
     print(f"[statcast] player ID lookup: saved {len(df):,} players")
+
+
+def _with_full_name(df: pd.DataFrame) -> pd.DataFrame:
+    """Savant leaderboards ship the player name in a column literally called
+    "last_name, first_name", which is awkward to query -- normalize it to a
+    plain full_name column up front."""
+    name_col = "last_name, first_name"
+    if name_col not in df.columns:
+        return df
+    parts = df[name_col].str.split(", ", n=1, expand=True)
+    df = df.copy()
+    df["full_name"] = parts[1] + " " + parts[0]
+    return df.drop(columns=[name_col])
 
 
 def download_sprint_speed(force: bool = False) -> None:
@@ -156,17 +216,48 @@ def download_sprint_speed(force: bool = False) -> None:
             print(f"[statcast] sprint speed {season}: no data yet (season may not have started)")
             continue
 
-        # "last_name, first_name" as a literal column name is awkward to
-        # query -- normalize it to a plain full_name column up front.
-        name_col = "last_name, first_name"
-        if name_col in df.columns:
-            parts = df[name_col].str.split(", ", n=1, expand=True)
-            df["full_name"] = parts[1] + " " + parts[0]
-            df = df.drop(columns=[name_col])
+        df = _with_full_name(df)
         df["season"] = season
 
         df.to_parquet(dest, index=False)
         print(f"[statcast] sprint speed {season}: saved {len(df)} players")
+
+
+def download_oaa(force: bool = False) -> None:
+    from pybaseball import statcast_outs_above_average
+
+    OAA_DIR.mkdir(parents=True, exist_ok=True)
+    for season in _target_seasons():
+        for code, pos in OAA_POSITIONS.items():
+            dest = OAA_DIR / f"{season}_{code}.parquet"
+            if dest.exists() and not force:
+                print(f"[statcast] OAA {season} {code}: already cached, skipping")
+                continue
+            try:
+                df = statcast_outs_above_average(
+                    season, pos, min_att=OAA_FETCH_MIN_ATT, view="Fielder"
+                )
+            except Exception as exc:  # same failure modes as sprint speed above
+                print(f"[statcast] OAA {season} {code}: fetch failed ({exc})")
+                continue
+            if df is None or df.empty:
+                print(f"[statcast] OAA {season} {code}: no data yet "
+                      f"(season may not have started)")
+                continue
+
+            df = _with_full_name(df)
+            df = df.rename(columns=OAA_COLUMN_RENAMES)
+            for src, dest_col in OAA_RATE_COLUMNS.items():
+                if src in df.columns:
+                    df[dest_col] = pd.to_numeric(
+                        df[src].astype(str).str.rstrip("%"), errors="coerce"
+                    )
+                    df = df.drop(columns=[src])
+            df["season"] = season
+            df["pos"] = code
+
+            df.to_parquet(dest, index=False)
+            print(f"[statcast] OAA {season} {code}: saved {len(df)} players")
 
 
 def load_to_duckdb() -> None:
@@ -184,20 +275,39 @@ def load_to_duckdb() -> None:
         finally:
             con.close()
 
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     sprint_files = sorted(SPRINT_SPEED_DIR.glob("*.parquet"))
     if not sprint_files:
         print("[statcast] no cached sprint-speed parquet files found; run download first")
-        return
+    else:
+        con = duckdb.connect(str(DB_PATH))
+        try:
+            file_globs = str(SPRINT_SPEED_DIR / "*.parquet")
+            con.execute(f"CREATE OR REPLACE TABLE statcast_sprint_speed AS SELECT * FROM read_parquet('{file_globs}')")
+            n = con.execute("SELECT COUNT(*) FROM statcast_sprint_speed").fetchone()[0]
+            print(f"[statcast] loaded statcast_sprint_speed ({n:,} rows, {len(sprint_files)} season-files) into {DB_PATH}")
+        finally:
+            con.close()
 
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(DB_PATH))
-    try:
-        file_globs = str(SPRINT_SPEED_DIR / "*.parquet")
-        con.execute(f"CREATE OR REPLACE TABLE statcast_sprint_speed AS SELECT * FROM read_parquet('{file_globs}')")
-        n = con.execute("SELECT COUNT(*) FROM statcast_sprint_speed").fetchone()[0]
-        print(f"[statcast] loaded statcast_sprint_speed ({n:,} rows, {len(sprint_files)} season-files) into {DB_PATH}")
-    finally:
-        con.close()
+    oaa_files = sorted(OAA_DIR.glob("*.parquet"))
+    if not oaa_files:
+        print("[statcast] no cached OAA parquet files found; run download first")
+    else:
+        con = duckdb.connect(str(DB_PATH))
+        try:
+            file_globs = str(OAA_DIR / "*.parquet")
+            # union_by_name: the per-position files are unioned together, so
+            # be tolerant if Savant ever adds a column mid-season.
+            con.execute(
+                f"CREATE OR REPLACE TABLE statcast_oaa AS "
+                f"SELECT * FROM read_parquet('{file_globs}', union_by_name=true)"
+            )
+            n = con.execute("SELECT COUNT(*) FROM statcast_oaa").fetchone()[0]
+            print(f"[statcast] loaded statcast_oaa ({n:,} rows, "
+                  f"{len(oaa_files)} season/position-files) into {DB_PATH}")
+        finally:
+            con.close()
 
     if not PLAYER_ID_LOOKUP_PATH.exists():
         print("[statcast] no cached player ID lookup found; run download first")

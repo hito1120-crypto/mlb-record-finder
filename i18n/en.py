@@ -15,6 +15,7 @@ STRINGS = {
         "Games with a leadoff HR AND a walk-off HR (Retrosheet Play-by-Play)",
         "Highest-leverage plate appearances (Retrosheet Play-by-Play)",
         "Bat Speed / Swing Length ranking (Statcast)",
+        "Outs Above Average (OAA) fielding ranking (Statcast)",
         "Free-form question mode: ask in plain language (Gemini API generates SQL)",
     ],
     "menu_exit": "Exit",
@@ -45,6 +46,11 @@ STRINGS = {
     "prompt_min_pa": "Minimum plate appearances (PA)",
     "prompt_min_sprint_opp": "Minimum sprint opportunities (min_opp)",
     "prompt_min_swings": "Minimum tracked swings",
+    "prompt_oaa_position": "Select a position by number",
+    "oaa_catcher_notice": (
+        "Choose a fielding position "
+        "(Baseball Savant's OAA leaderboard does not cover catchers):"
+    ),
 
     "prompt_leverage_start_date": "Start date (YYYY-MM-DD, blank = no limit)",
     "prompt_leverage_end_date": "End date (YYYY-MM-DD, blank = no limit)",
@@ -65,6 +71,19 @@ STRINGS = {
         "Play-by-Play data (templates 9-10) is only fetched for the most recent 5 seasons, and\n"
         "Retrosheet's own play-by-play coverage is only partial before the 1920s."
     ),
+
+    "oaa_position_labels": {
+        "1B": "First Base (1B)",
+        "2B": "Second Base (2B)",
+        "3B": "Third Base (3B)",
+        "SS": "Shortstop (SS)",
+        "LF": "Left Field (LF)",
+        "CF": "Center Field (CF)",
+        "RF": "Right Field (RF)",
+        "IF": "Infield, all (IF)",
+        "OF": "Outfield, all (OF)",
+        "ALL": "All positions (catchers excluded)",
+    },
 
     "column_labels": {
         "player_name": "Player",
@@ -128,6 +147,12 @@ STRINGS = {
         "avg_bat_speed": "Avg Bat Speed (mph)",
         "max_bat_speed": "Max Bat Speed (mph)",
         "avg_swing_length": "Avg Swing Length (ft)",
+        "primary_position": "Primary Position",
+        "outs_above_average": "OAA",
+        "fielding_runs_prevented": "Fielding Runs Prevented",
+        "actual_success_rate": "Actual Success Rate (%)",
+        "adj_estimated_success_rate": "Est. Success Rate (%)",
+        "diff_success_rate": "Success Rate Diff (%)",
     },
 
     "luck_labels": {

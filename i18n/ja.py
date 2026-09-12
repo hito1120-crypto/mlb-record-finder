@@ -15,6 +15,7 @@ STRINGS = {
         "先頭打者本塁打+サヨナラ本塁打の試合検索 (Retrosheet Play-by-Play)",
         "レバレッジ指数が最も高かった打席検索 (Retrosheet Play-by-Play)",
         "バットスピード・スイング長ランキング (Statcast)",
+        "OAA (Outs Above Average) 守備ランキング (Statcast)",
         "自由質問モード: 自然文で質問する (Gemini APIがSQLを生成)",
     ],
     "menu_exit": "終了",
@@ -45,6 +46,11 @@ STRINGS = {
     "prompt_min_pa": "対象とする最低打席数(PA)を入力してください",
     "prompt_min_sprint_opp": "対象とする最低機会数(min_opp)を入力してください",
     "prompt_min_swings": "対象とする最低スイング数を入力してください",
+    "prompt_oaa_position": "守備位置を番号で選択してください",
+    "oaa_catcher_notice": (
+        "対象の守備位置を選んでください "
+        "(Baseball SavantのOAAリーダーボードは捕手を対象外としています):"
+    ),
 
     "prompt_leverage_start_date": "検索対象の開始日を入力 (YYYY-MM-DD, 空欄で指定なし)",
     "prompt_leverage_end_date": "検索対象の終了日を入力 (YYYY-MM-DD, 空欄で指定なし)",
@@ -65,6 +71,19 @@ STRINGS = {
         "Play-by-Playデータ(テンプレート9・10)は直近5シーズンのみ取得対象で、\n"
         "Retrosheet側の記録精度は1920年代以前は部分的です。"
     ),
+
+    "oaa_position_labels": {
+        "1B": "一塁手 (1B)",
+        "2B": "二塁手 (2B)",
+        "3B": "三塁手 (3B)",
+        "SS": "遊撃手 (SS)",
+        "LF": "左翼手 (LF)",
+        "CF": "中堅手 (CF)",
+        "RF": "右翼手 (RF)",
+        "IF": "内野手 全体 (IF)",
+        "OF": "外野手 全体 (OF)",
+        "ALL": "全ポジション (捕手を除く)",
+    },
 
     "column_labels": {
         "player_name": "選手名",
@@ -128,6 +147,12 @@ STRINGS = {
         "avg_bat_speed": "平均バットスピード(mph)",
         "max_bat_speed": "最高バットスピード(mph)",
         "avg_swing_length": "平均スイング長(ft)",
+        "primary_position": "主な守備位置",
+        "outs_above_average": "OAA(平均比アウト数)",
+        "fielding_runs_prevented": "守備による失点抑止(点)",
+        "actual_success_rate": "実際の捕球成功率(%)",
+        "adj_estimated_success_rate": "推定捕球成功率(%)",
+        "diff_success_rate": "成功率の差(%)",
     },
 
     "luck_labels": {
