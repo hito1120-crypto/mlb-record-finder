@@ -8,6 +8,18 @@ publicly available data.
 
 For data sources, notes on this tool's own metrics (WAR, etc.), and a disclaimer, see [mlb-record-finder_disclosure_notes_en.md](mlb-record-finder_disclosure_notes_en.md).
 
+## Table of Contents
+
+- [What it does](#what-it-does)
+- [How This Differs From Existing Services](#how-this-differs-from-existing-services)
+- [Data sources](#data-sources)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Directory layout](#directory-layout)
+- [Tech stack](#tech-stack)
+- [About i18n](#about-i18n)
+- [Known limitations](#known-limitations)
+
 ## What it does
 
 Run `python cli.py`, pick one of 14 record templates by number, enter a few
