@@ -6,6 +6,8 @@ publicly available data.
 
 [日本語 README](README.md)
 
+For data sources, notes on this tool's own metrics (WAR, etc.), and a disclaimer, see [mlb-record-finder_disclosure_notes_en.md](mlb-record-finder_disclosure_notes_en.md).
+
 ## What it does
 
 Run `python cli.py`, pick one of 14 record templates by number, enter a few

@@ -5,6 +5,8 @@
 
 [English README](README.en.md)
 
+データ出典・独自指標(WAR等)の注記・免責事項は [mlb-record-finder_disclosure_notes.md](mlb-record-finder_disclosure_notes.md) を参照してください。
+
 ## できること
 
 `python cli.py` を実行すると、14の定型記録テンプレートから番号を選び、閾値や年度などのパラメータを入力するだけで、DuckDBに対してSQLが実行され、結果が表形式で表示されます。
