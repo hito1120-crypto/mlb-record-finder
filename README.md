@@ -1,104 +1,119 @@
 # mlb-record-finder
 
-サラ・ラングス記者(MLB.com)のような、マニアックなMLB記録の発掘・検索ができるCLIツールです。
-すべて無料・公開データのみを使用しています。
+A CLI tool for digging up obscure MLB records and stats -- the kind of deep-cut
+finds a reporter like Sarah Langs (MLB.com) surfaces. Built entirely on free,
+publicly available data.
 
-[English README](README.en.md)
+[日本語 README](README.ja.md)
 
-データ出典・独自指標(WAR等)の注記・免責事項は [mlb-record-finder_disclosure_notes.md](mlb-record-finder_disclosure_notes.md) を参照してください。
+For data sources, notes on this tool's own metrics (WAR, etc.), and a disclaimer, see [mlb-record-finder_disclosure_notes_en.md](mlb-record-finder_disclosure_notes_en.md).
 
-## 目次
+## Table of Contents
 
-- [できること](#できること)
-- [既存サービスとの違い](#既存サービスとの違い)
-- [データソース](#データソース)
-- [セットアップ](#セットアップ)
-- [使い方](#使い方)
-- [ディレクトリ構成](#ディレクトリ構成)
-- [技術スタック](#技術スタック)
-- [多言語対応について](#多言語対応について)
-- [既知の制約](#既知の制約)
+- [What it does](#what-it-does)
+- [How This Differs From Existing Services](#how-this-differs-from-existing-services)
+- [Data sources](#data-sources)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Directory layout](#directory-layout)
+- [Tech stack](#tech-stack)
+- [About i18n](#about-i18n)
+- [Known limitations](#known-limitations)
 
-## できること
+## What it does
 
-`python cli.py` を実行すると、14の定型記録テンプレートから番号を選び、閾値や年度などのパラメータを入力するだけで、DuckDBに対してSQLが実行され、結果が表形式で表示されます。
+Run `python cli.py`, pick one of 14 record templates by number, enter a few
+parameters (thresholds, a season year, etc.), and it runs SQL against a local
+DuckDB file and prints the results as a table.
 
-1. **打球速度・飛距離条件を満たす本塁打を検索** (Statcast) — 例: 打球速度115mph以上 かつ 飛距離470ft以上の本塁打一覧
-2. **特定球団の通算本塁打ランキング** (Lahman) — 球団の歴史(移転・改名含む)を通算した選手別HRランキング
-3. **あるシーズンでの2条件達成者一覧** (Lahman) — 例: 本塁打30本以上+盗塁20個以上を同一シーズンで達成した選手
-4. **チームの任意N試合ウィンドウでの最高勝率記録** (Retrosheet) — 全チーム・全シーズンを対象に、連続N試合での最高勝率を検索
-5. **あるシーズンでの3条件複合達成者検索** (Lahman) — 例: 三塁打+本塁打+盗塁の複合達成
-6. **バレル率・Hard-Hit%ランキング** (Statcast) — 最低打球イベント数以上の選手を対象に、指定シーズンのバレル率・Hard-Hit%(打球速度95mph以上の割合)をランキング表示
-7. **期待成績(xwOBA/xBA/xSLG)ランキングと実成績との乖離** (Statcast) — 指定シーズンの期待成績上位選手を、実成績(wOBA/BA/SLG)との差分・好不調フラグ付きで表示
-8. **Sprint Speedランキング** (Statcast) — 指定シーズンの走力(Sprint Speed)上位選手を表示
-9. **先頭打者本塁打+サヨナラ本塁打の試合検索** (Retrosheet Play-by-Play) — その試合の最初の打席が本塁打、かつ試合そのものもサヨナラ本塁打で終わった試合を検索
-10. **レバレッジ指数が最も高かった打席検索** (Retrosheet Play-by-Play) — 各打席が本拠地チームの勝利確率に与えた変化量(レバレッジ指数)でランキング。期間・打者名で絞り込み可能
-11. **バットスピード・スイング長ランキング** (Statcast) — 指定シーズンの平均/最高バットスピード・平均スイング長を選手別にランキング(最低スイング数で絞り込み可能)
-12. **OAA (Outs Above Average) 守備ランキング** (Statcast) — 指定シーズン・守備位置ごとのOAA(平均的な野手と比べたアウト創出数)・守備による失点抑止をランキング(捕手は対象外)
-13. **アームアングル(投球時の腕の角度)ランキング** (Statcast) — 指定シーズンの投手別の平均アームアングルをランキング(最低投球数で絞り込み可能)
-14. **シーズンWARランキング** (Lahman/Statcast/Retrosheet, 2015〜2026年シーズンのみ) — ⚠️ **本ツール独自の簡易算出WARです。公式のFanGraphs (fWAR) やBaseball-Reference (bWAR) の数値とは一致しません**(詳細は後述)
+1. **Search home runs by exit velocity + distance** (Statcast) -- e.g. home runs with exit velocity >= 115 mph AND distance >= 470 ft
+2. **All-time HR ranking for a given franchise** (Lahman) -- ranks players by home runs hit for a franchise across its entire history, including relocations/renames
+3. **Players who hit two season thresholds** (Lahman) -- e.g. players with >= 30 HR AND >= 20 SB in the same season
+4. **Best winning percentage over any N-game window** (Retrosheet) -- searches all teams and all seasons for the best win% over any N consecutive games
+5. **Players who hit three season thresholds** (Lahman) -- e.g. a triples + home runs + stolen bases compound achievement
+6. **Barrel% / Hard-Hit% ranking** (Statcast) -- for players with at least a minimum number of batted-ball events, ranks Barrel% and Hard-Hit% (exit velocity >= 95 mph) for a given season
+7. **Expected stats (xwOBA/xBA/xSLG) ranking vs. actual results** (Statcast) -- ranks a season's expected-stats leaders alongside their actual wOBA/BA/SLG, with an over/under-performing flag
+8. **Sprint Speed ranking** (Statcast) -- ranks a season's fastest players by Sprint Speed
+9. **Games with a leadoff HR AND a walk-off HR** (Retrosheet Play-by-Play) -- finds games where the very first plate appearance of the game was a home run and the game also ended on a walk-off home run
+10. **Highest-leverage plate appearances** (Retrosheet Play-by-Play) -- ranks individual plate appearances by how much they swung the home team's win probability, optionally filtered by date range and/or batter name
+11. **Bat Speed / Swing Length ranking** (Statcast) -- ranks players by average/max bat speed and average swing length for a given season, filterable by a minimum number of tracked swings
+12. **Outs Above Average (OAA) fielding ranking** (Statcast) -- ranks players by OAA (outs saved above an average fielder) and fielding runs prevented for a given season and fielding position (catchers excluded)
+13. **Arm Angle ranking** (Statcast) -- ranks pitchers by average arm angle (release-point angle) for a given season, filterable by a minimum number of tracked pitches
+14. **Season WAR ranking** (Lahman/Statcast/Retrosheet, 2015-2026 seasons only) -- ⚠️ **this tool's own simplified WAR estimate. It does NOT match official FanGraphs (fWAR) or Baseball-Reference (bWAR) numbers** (details below)
 
-## 既存サービスとの違い
+## How This Differs From Existing Services
 
-MLB選手・記録の検索サービスとしては、Baseball-Reference.comの有料サービス「Stathead」や、Baseball Savant公式の「Statcast Search」など、画面上でフィルター項目を選んで検索する本格的なツールが既に存在します。
-本ツールの違いは、日本語または英語の自然文で質問するとAIが自動でSQLクエリを生成し、生成されたSQLも表示しながら結果を返す自由質問モードを備えている点です。また、WAR・勝利確率・レバレッジ指数・Statcast詳細指標(OAA・バットスピード・投球腕角度等)までを1つのローカルDBにまとめ、無料・無登録で使えるようにしています。
+Established tools for searching MLB player and record data already exist, such as Baseball-Reference.com's paid "Stathead" service and Baseball Savant's official "Statcast Search," both of which use filter-based UIs.
+This tool's key difference is its free-form question mode: ask a question in natural Japanese or English, and an AI generates the SQL query automatically, showing you the generated SQL alongside the results. It also combines WAR, win probability, leverage index, and detailed Statcast metrics (OAA, bat speed, arm angle, etc.) into a single local database, usable for free without any account.
 
-## データソース
+## Data sources
 
-すべて無料・公開データです。
+All free and publicly available.
 
-| ソース | 内容 | 収録期間 |
+| Source | Contents | Coverage |
 |---|---|---|
-| [Lahman Baseball Database (SABR公式版)](https://sabr.box.com/s/y1prhc795jk8zvmelfd3jq7tl389y6cd) | シーズン・通算成績(打撃・投球・守備・受賞歴) | 1871年〜2025年シーズン |
-| [Retrosheet Game Logs](https://www.retrosheet.org/gamelogs/index.html) | チーム単位の試合ごとの勝敗・スコア | 1871年〜現在 |
-| [pybaseball](https://github.com/jldbc/pybaseball) 経由の Statcast (Baseball Savant) | 打球速度・飛距離・回転数等 | 2015年シーズン以降(Statcast全球追跡開始以降) |
-| [Retrosheet Play-by-Play (イベントファイル)](https://www.retrosheet.org/events/index.html) | 打席単位の走者状況・スコア・プレー結果 | デフォルトで直近5シーズンのみ取得。Retrosheet側のPlay-by-Play記録自体、1920年代以前は部分的(後述) |
+| [Lahman Baseball Database (official SABR edition)](https://sabr.box.com/s/y1prhc795jk8zvmelfd3jq7tl389y6cd) | Season/career batting, pitching, fielding, and awards | 1871 through the 2025 season |
+| [Retrosheet Game Logs](https://www.retrosheet.org/gamelogs/index.html) | Team-level game-by-game results and scores | 1871-present |
+| [pybaseball](https://github.com/jldbc/pybaseball)'s Statcast (Baseball Savant) | Exit velocity, distance, spin rate, etc. | 2015 season onward (start of Statcast's full pitch-tracking era) |
+| [Retrosheet Play-by-Play (event files)](https://www.retrosheet.org/events/index.html) | Per-plate-appearance base/out state, score, and play outcome | Most recent 5 seasons fetched by default; Retrosheet's own play-by-play coverage is only partial before the 1920s (see the caveat below) |
 
-Lahman Baseball Database は、かつての配布元だった `chadwickbureau/baseballdatabank` リポジトリがGitHub上から削除されて以降、SABR (Society for American Baseball Research) が公式に引き継いでメンテナンスしています。本ツールはSABRが公開しているBox.com上のCSV版(`lahman_1871-2025_csv` フォルダ、2026年1月リリース、2025年シーズンまで収録)を取得元としています。このBox.comフォルダのページ上には明示的なライセンス表記が見当たりません(SABRサイト内のNegro Leaguesデータ部分のみSeamheads.comのライセンス表記があります)。そのため本ツールでの利用は個人利用・研究利用の範囲を前提としています。
+The Lahman Baseball Database is now officially maintained by SABR (Society
+for American Baseball Research), after its former distributor,
+`chadwickbureau/baseballdatabank`, was taken down from GitHub. This tool
+pulls from SABR's CSV release on Box.com (the `lahman_1871-2025_csv`
+folder, released January 2026, covering through the 2025 season). That Box
+folder page has no explicit license notice (only the Negro Leagues data
+elsewhere on SABR's site is explicitly credited to Seamheads.com), so this
+tool assumes personal/research use.
 
-Box.comの共有フォルダは公開APIを持たないJS製SPAのため、`ingest/lahman.py` は共有ページに埋め込まれたJSON(`Box.postStreamData`)を解析してファイル一覧を取得し、Boxの直リンクエンドポイント経由でCSVをダウンロードしています。Box側のページ構造が変わると取得に失敗する可能性があるため、その場合は旧ミラー(`xorq-labs/baseballdatabank`、2021年シーズンまでのデータ)に自動的にフォールバックします。
+Box.com share folders are a JS-rendered SPA with no public listing API, so
+`ingest/lahman.py` parses the JSON (`Box.postStreamData`) embedded in the
+share page to get the file list, then downloads each CSV via Box's direct
+shared-file endpoint. If Box changes that page's markup and this breaks,
+the script automatically falls back to the previous mirror
+(`xorq-labs/baseballdatabank`, data through the 2021 season only).
 
-### ⚠️ データ完全性に関する重要な注意
+### ⚠️ Important data-completeness caveat
 
-**本ツールは1901年以降のMLB記録についてはほぼ全域をカバーできますが、19世紀(1871〜1900年)のデータはRetrosheet側の記録完全性に限定的な制約があり、この期間の「史上初」系の主張には注意が必要です。**
+**This tool can cover nearly the entire scope of MLB records from 1901 onward, but 19th-century (1871-1900) data has limited completeness on the Retrosheet side, so "first-ever" claims from that period should be treated with caution.**
 
-### テンプレート6〜8 (Statcast発展テンプレート) の実装メモ
+### Implementation notes for templates 6-8 (the Statcast add-ons)
 
-- **バレル判定**: 独自の速度・角度ルールは実装せず、`statcast()` の生データに含まれるMLBAM側の分類列 `launch_speed_angle` をそのまま使用しています。取得済みデータを実際に集計して確認したところ、`launch_speed_angle = 6` の打球は打球速度97.5〜122.9mph(平均約105mph)・打球角度6〜47度(平均約26度)であり、これはBaseball Savantが公式に定義する「Barrel」の範囲と一致します(1=Weak, 2=Topped, 3=Under, 4=Flare/Burner, 5=Solid Contact, 6=Barrel)。Hard-Hit%は仕様通り打球速度95mph以上の単純な割合です。
-- **重要なデータの癖**: Statcastの生データ(`statcast_pitches`)の `player_name` 列は**投手側**の名前であり、打者名ではありません(同一 `player_name` に対し `pitcher` 列は一定、`batter` 列だけが変化することで確認済み)。テンプレート6・7は打者ランキングのため、`batter` (MLBAM ID) を `player_id_lookup` テーブル(後述)と突き合わせて正しい打者名を取得しています。
-- **期待成績(xBA/xSLG/xwOBA)**: いずれも生データの既存列(`estimated_ba_using_speedangle` / `estimated_slg_using_speedangle` / `estimated_woba_using_speedangle`)を使用。xBA/xSLGは打球イベント(K/四球/死球は対象外)、xwOBAはK・四球・死球も加味した打席単位の指標という、Baseball Savant側の設計差をそのまま踏襲しています。実成績との差分(wOBA基準)が±0.015を超える場合に「好調(幸運)」「不振(不運)」フラグを付与しています(閾値は `query/templates.py` の `luck_threshold` で調整可能)。
-- **Sprint Speed**: 生データの `statcast_pitches` にはSprint Speed列が存在しないため、pybaseballの専用リーダーボード取得関数 `statcast_sprint_speed(year, min_opp)` を使用しています。これは投球単位ではなくシーズン単位の集計値のため、`ingest/statcast.py` では1シーズンにつき1回のみリクエストし(取得済みシーズンは再取得しません)、`data/raw/statcast/sprint_speed/` にキャッシュしています。
-- **打者ID⇄名前の変換**: 上記の理由により、pybaseballの `chadwick_register()` (MLBAM ID⇄選手名の全選手クロスウォーク)を一度だけ取得し、`data/raw/statcast/player_id_lookup.parquet` にキャッシュ、DuckDBには `player_id_lookup` テーブルとしてロードしています。これは特定シーズンに紐づかない全選手台帳のため、シーズンごとの再取得は不要です。
+- **Barrel classification**: rather than reimplementing Statcast's own exit-velocity/launch-angle sweet-spot rule, this uses the MLBAM-assigned `launch_speed_angle` column from the raw `statcast()` data as-is. Verified by aggregating the ingested data directly: rows with `launch_speed_angle = 6` have exit velocity 97.5-122.9 mph (avg ~105) and launch angle 6-47 deg (avg ~26) -- exactly Baseball Savant's documented "Barrel" bucket (the full scale is 1=Weak, 2=Topped, 3=Under, 4=Flare/Burner, 5=Solid Contact, 6=Barrel). Hard-Hit% is the plain exit-velocity->=95 mph rate, per spec.
+- **A data gotcha worth knowing**: in the raw Statcast pitch data (`statcast_pitches`), the `player_name` column is the **pitcher** throwing the pitch, not the batter (confirmed: for a fixed `player_name`, `pitcher` stays constant across rows while `batter` varies). Templates 6 and 7 are batter-side leaderboards, so they join the numeric `batter` (MLBAM ID) against the `player_id_lookup` table (see below) to get the batter's actual name.
+- **Expected stats (xBA/xSLG/xwOBA)**: computed from the existing raw columns (`estimated_ba_using_speedangle` / `estimated_slg_using_speedangle` / `estimated_woba_using_speedangle`). This preserves Baseball Savant's own design difference between the two: xBA/xSLG only cover batted-ball contact events (strikeouts/walks/HBP excluded), while xwOBA is a full plate-appearance metric that already assigns fixed values to strikeouts/walks/HBP. A player is flagged "overperforming"/"underperforming" when actual wOBA differs from xwOBA by more than +-0.015 (adjustable via `luck_threshold` in `query/templates.py`).
+- **Sprint Speed**: not present anywhere in the pitch-level data, so this uses pybaseball's dedicated leaderboard function, `statcast_sprint_speed(year, min_opp)`. Since it's a season-level aggregate (not per-pitch), `ingest/statcast.py` requests it once per season (already-fetched seasons are never re-requested) and caches it under `data/raw/statcast/sprint_speed/`.
+- **Batter ID <-> name lookup**: to resolve the `player_name`-is-the-pitcher issue above, `ingest/statcast.py` fetches pybaseball's `chadwick_register()` (a full MLBAM-ID-to-name crosswalk for essentially every player) exactly once, caches it at `data/raw/statcast/player_id_lookup.parquet`, and loads it into DuckDB as `player_id_lookup`. It isn't season-specific, so it's never re-fetched per season.
 
-### テンプレート9〜10 (Retrosheet Play-by-Play発展テンプレート) の実装メモ
+### Implementation notes for templates 9-10 (the Retrosheet Play-by-Play add-ons)
 
-- **Play-by-Playの解析**: RetrosheetのPlay-by-Playは、そのままクエリできる表ではなく独自の圧縮記法で書かれたイベントファイルとして配布されています。`ingest/_playbyplay_parser.py` は、Cツールチェーン(Chadwickの `cwevent`)に依存しないフルスクラッチのPythonパーサーで、打席・走塁イベントごとに前後の走者状況とアウトカウント、得点を再構築します。この最終スコアの再構築結果は、取り込み済みの全試合についてRetrosheetのGame Logsと突き合わせて検証しており、本稿執筆時点で2025年シーズンの2,430試合中2,417試合(99.5%)が完全一致、残りの少数は単一の系統的バグというより個別の不整合に起因すると見られます。
-- **得点期待値表 (Run Expectancy Matrix)** (`transform/schema.sql` の `v_run_expectancy`): 走者状況8パターン×アウトカウント3パターン(計24通り)ごとに、そのイニングの残りで平均何点入ったかを、取り込み済みのPlay-by-Playデータから直接算出しています。値は公表されているMLBの得点期待値表とよく一致しており(例: 走者なし0アウトで約0.50点、満塁0アウトで約2.4点、走者なし2アウトで約0.10点)、Play-by-Playパイプライン全体の妥当性を確認する主な手がかりになっています。
-- **勝利確率** (`v_win_probability`): 1シーズン分のPlay-by-Playデータだけでは、イニング×得点差×アウト×走者状況で分割した実績ベースの勝利確率表を作るには標本数が足りないため、得点期待値表を使った近似モデルで計算しています。具体的には、現在の得点差に得点期待値ベースの残り試合の得点予測を加えた「予測最終得点差」を、ロジスティック関数で確率に変換する方式です。本拠地チームの利(ホームアドバンテージ)は考慮しておらず、延長回は9回の延長として扱う簡略化があるため、正確なスポーツブック水準の数値としてではなく、あくまで傾向を示す値として扱ってください。例外的に厳密なのは試合の最後のプレーで、実際の勝者に基づいて必ず勝利確率1.0/0.0に確定させているため、サヨナラプレーのレバレッジは正しく反映されます。
-- **レバレッジ指数** (`v_play_leverage`、テンプレート10で使用): 各打席のレバレッジは、その状況で起こり得たすべての結果を平均する教科書的な定義ではなく、実際に記録された結果による勝利確率の前後差(打席前後のスイング幅)をそのまま使っています。
+- **Play-by-play parsing**: Retrosheet distributes play-by-play as raw event files in a compact grammar, not a ready-to-query table. `ingest/_playbyplay_parser.py` is a from-scratch, pure-Python parser (no C toolchain / Chadwick `cwevent` dependency) that reconstructs, for every plate appearance and baserunning event, the base/out state before and after and how many runs scored. Its final-score reconstruction has been cross-checked against Retrosheet's own Game Logs for every ingested game; as of this writing it matches exactly for 2,417 of 2,430 games (99.5%) in the ingested 2025 season, with the small remainder traced to isolated inconsistencies rather than a single systematic bug.
+- **Run Expectancy Matrix** (`v_run_expectancy` in `transform/schema.sql`): the average runs scored for the rest of a half-inning, for each of the 8 base states x 3 out counts (24 combinations), computed directly from the ingested play-by-play. Values line up with published MLB run-expectancy tables (e.g. bases empty/0 outs ~0.50, bases loaded/0 outs ~2.4, bases empty/2 outs ~0.10), which is the main sanity check for the whole play-by-play pipeline.
+- **Win probability** (`v_win_probability`): there isn't enough ingested history yet for a reliable empirical win-probability table (that would need binning by inning x score-diff x outs x base-state, with only one season of data), so this is a modeled approximation instead -- a projected final score differential (current score + run-expectancy-based projections for the rest of the game) collapsed to a probability via a logistic curve. It has no home-field-advantage term and treats extra innings as a continuation of the 9th, so treat it as directional, not a precise sportsbook-grade number. The one place it's exact rather than modeled: the final play of a game always resolves to win probability 1.0/0.0 for the actual winner, so a walk-off's full leverage swing always shows up correctly.
+- **Leverage index** (`v_play_leverage`, used by template 10): each play's leverage is the actual before/after win-probability swing it produced, not the textbook definition's average over every hypothetical outcome of that base-out-score state.
 
-### テンプレート11〜13 (Statcastバットトラッキング・守備・アームアングル発展テンプレート) の実装メモ
+### Implementation notes for templates 11-13 (the Statcast bat-tracking / fielding / arm-angle add-ons)
 
-- **バットスピード・スイング長**: `bat_speed` / `swing_length` は既存の `statcast_pitches` の列としてそのまま取得されており、新規の取得ステップは不要でした(Baseball Savantが同じ投球単位CSVにこれらの列を追加したため、`ingest/statcast.py` を再実行するだけで取り込まれます)。両列はスイングが発生した投球でのみ非NULLになる(サンプル調査では全投球の約46%)ため、`min_swings` はスイング数そのものを基準にしています。
-- **OAA (Outs Above Average)**: 投球単位データには存在しない、Baseball Savant公式のシーズン集計リーダーボード(`pybaseball.statcast_outs_above_average(year, pos, min_att, view="Fielder")`)を使用しています。**同じ選手でも問い合わせた守備位置によってOAAの値が変わる**(例: 内野全体で守備をこなす選手を`2B`で見た場合と`IF`集計で見た場合とで別の数値になる)ため、シーズン×守備位置の組み合わせごとに個別リクエスト・キャッシュしており(`data/raw/statcast/oaa/`)、DuckDBの `statcast_oaa` テーブルでは問い合わせた守備位置を `pos` 列として保持しています。取得対象の守備位置は 1B/2B/3B/SS/LF/CF/RF の実守備位置7種類に加え、Savant側の集計バケットである IF/OF/ALL(捕手を除く全体)です。捕手はこのリーダーボード自体が非対応のため対象外です。また、このリーダーボードのCSVには機会数(attempts)の列が無く、Sprint Speedの `min_opp` のようにクエリ時に変更できないため、取得時点でBaseball Savant側の「qualified」基準(`min_att="q"`)に固定しています。方向別内訳(前方/後方/左右)・打者の左右別内訳の列は `statcast_oaa` テーブルには取り込んでいますが、テンプレート12のランキング表示では主要指標(OAA・守備による失点抑止・捕球成功率)のみを表示しています。
-- **アームアングル**: `arm_angle` も `bat_speed` 同様、`statcast_pitches` に既存の列としてそのまま追加されていました。ただしバットスピードとは性質が異なり、スイングの有無ではなく投手のリリースポイントに基づく指標のため、**ほぼ全投球(取り込み済みデータで確認したところ約94%)で非NULL**です。そのため `min_pitches` はスイング数ではなく投球数そのものを基準にしています。また、テンプレート6・7の打者ランキングとは異なり `player_id_lookup` との突き合わせは不要です。`statcast_pitches.player_name` はそもそも投手側の名前であるため(前述のテンプレート6〜8の実装メモ参照)、そのまま投手名として使えます。シーズン内でも同一投手のアームアングルは完全に一定ではなく(標本調査では標準偏差でおおよそ3〜5度程度のばらつき)、このランキングはシーズン平均値を表示しています。
+- **Bat Speed / Swing Length**: `bat_speed` / `swing_length` come straight off the existing `statcast_pitches` columns -- no new ingest step was needed, since Baseball Savant added these to the same pitch-level CSV export, so simply re-running `ingest/statcast.py` picked them up. Both columns are non-null only on pitches where the batter actually swung (~46% of pitches in a sampled day), which is why `min_swings` counts swings, not pitches.
+- **Outs Above Average (OAA)**: not present anywhere in the pitch-level data, so this uses Baseball Savant's own precomputed season leaderboard (`pybaseball.statcast_outs_above_average(year, pos, min_att, view="Fielder")`). **The same player's OAA changes depending on which position it's queried for** (e.g. a utility infielder shows a different number under `2B` than under the `IF` aggregate), so each (season, position) combination is fetched and cached separately (`data/raw/statcast/oaa/`), with the queried position stored as its own `pos` column on the `statcast_oaa` table. The positions fetched are the 7 individual fielding positions (1B/2B/3B/SS/LF/CF/RF) plus Savant's own IF/OF/ALL aggregate buckets (ALL excludes catchers). Catchers are excluded entirely because the leaderboard itself doesn't cover them. The leaderboard CSV also has no attempts/opportunities column, so unlike Sprint Speed's `min_opp` the threshold can't be relaxed at query time -- it's fixed at Savant's own "qualified" cutoff (`min_att="q"`) when fetched. The leaderboard's directional (front/back/lateral) and batter-handedness breakdowns are ingested into `statcast_oaa` but deliberately left out of template 12's ranking display, which shows only the headline metrics (OAA, fielding runs prevented, catch success rates).
+- **Arm Angle**: like `bat_speed`, `arm_angle` arrived as an existing `statcast_pitches` column with no new ingest step needed. Unlike bat speed, though, it's a pitcher release-point measurement rather than something tied to whether the batter swung, so it's non-null on roughly 94% of all pitches (confirmed against the ingested data) -- which is why `min_pitches` counts pitches, not swings. It also needs no `player_id_lookup` join, unlike templates 6-7's batter-side leaderboards: `statcast_pitches.player_name` is already the pitcher's name (see the templates 6-8 note above), so it's used directly. A given pitcher's arm angle isn't perfectly constant across a season (a sampled check found a standard deviation of roughly 3-5 degrees per pitcher), so this ranking shows the season average.
 
-### テンプレート14 (シーズンWARランキング) の実装メモ
+### Implementation notes for template 14 (Season WAR ranking)
 
-#### ⚠️ 本ツールのWARは独自の簡易算出であり、公式のfWAR/bWARとは一致しません
+#### ⚠️ This tool's WAR is its own simplified estimate -- it does not match official fWAR/bWAR
 
-**本テンプレートが算出するWARは、公開されているwOBA/FIPベースのサーベルメトリクス手法を参考にした本ツール独自の簡易実装です。FanGraphs (fWAR) やBaseball-Reference (bWAR) の公式アルゴリズムを再現したものではなく、両サイトの数値と一致することは意図していません。** CLI上でもテンプレート14を実行するたびに同じ注記を表示しています。
+**The WAR this template computes is this tool's own simplified implementation, built by reference to publicly documented wOBA/FIP-style sabermetric methodology. It is not a reproduction of FanGraphs' (fWAR) or Baseball-Reference's (bWAR) actual algorithms, and matching either site's published numbers is explicitly not a goal.** The CLI prints this same caveat every time template 14 runs.
 
-- **対応シーズン**: 2015〜2026年のみ。wOBA/FIPの年度別係数はFanGraphsの公開Guts!ページ(`https://www.fangraphs.com/guts.aspx?type=cn`)から2015〜2026年分のみを転記して `transform/war_constants.py` にテーブル化しており、Lahmanのように1871年まで遡ることはできません(古い年代の係数を正確に転記するには別途慎重な検証が必要なため、今回は対象外としています)。対応外の年を指定するとエラーメッセージを表示します。
-- **打撃価値 (wRAA)**: 標準的なwOBA式(分母はAB+故意四球を除くBB+犠飛+死球)で算出したwOBAと、その年のリーグ平均wOBAとの差からWeighted Runs Above Averageを算出しています。
-- **走塁価値**: 盗塁企図(SB/CS)の得点価値のみの簡易版です。進塁や併殺回避などを含む本格的なBaserunning Runs (BsR)は対象外です。
-- **守備価値**: 2016年以降はStatcastの公式リーダーボード(`statcast_oaa.fielding_runs_prevented`、OAAを既にラン換算済みの値)をそのまま採用しています。**2015年はOAAデータが存在しないため、守備価値は一律0として扱っています**(Lahmanの守備成績(補殺・刺殺・失策等)からの簡易推定も検討しましたが、OAAが前提とする打球コース別の捕球確率モデルに相当する情報がなく、信頼できる代替指標を作れないと判断したため0扱いとしました)。
-- **投手価値 (FIPベース)**: `(13×HR + 3×(BB+HBP) - 2×K) / IP + cFIP` で算出したFIPと、同じ方法でリーグ全体から算出したリーグ平均FIPとの差を、投球回に応じてRuns Above Averageに換算しています。
-- **パークファクター**: 独自の新規ロジックとして、Retrosheet Game Logsから「本拠地の(得点+失点)/試合 ÷ ロードの(得点+失点)/試合」という単年の簡易パークファクターを算出しています(`query/park_factor.py`)。1シーズン分・無補正の値のため標本ノイズが大きく、標準的な手法に倣って中立の1.0側に半分寄せた値(`(raw+1)/2`)を、選手のシーズン成績全体に適用しています。Lahman公式のBPF(複数年補正済み)との相関は2024年シーズンで約0.73であり、方向性は一致するものの完全には一致しません。移籍選手はチームごとの出場機会で加重平均しています。
-- **リプレースメントレベル・ポジション補正**: 「勝率.294相当」という公開されている標準的な定義を採用し、その年の実際の平均試合数(2020年の60試合シーズンなども自動反映)とR/W(1勝あたりの得点換算値)から、リーグ全体のリプレースメント分の得点プールを算出しています。このプールを打撃側・投手側に独自に50/50で配分しています(FanGraphs公式は実績ベースの約57/43分割かつ先発/救援で異なるリプレースメントレベルを使用しており、本ツールはそれを再現していません)。ポジション補正はFanGraphsが公開している標準値(600打席あたりの補正ラン数)を採用し、`lahman_appearances` から選手のシーズン最多出場ポジションを判定して適用しています。
-- **二刀流選手の扱い**: 大谷翔平選手のような二刀流選手は、打撃側の価値と投手側の価値を単純に合算しています。ただし打撃側のポジション補正はDH出場分をそのまま「本業DH」と同様に減点しており、投手として別途価値を生んでいる分を考慮していないため、二刀流選手は実際より低めのWARになりやすい点に注意してください(実データ検証では大谷選手のWARが公式値より低めに出る傾向を確認しています)。
+- **Supported seasons**: 2015-2026 only. The year-by-year wOBA/FIP constants are transcribed, for 2015-2026 only, from FanGraphs' public Guts! page (`https://www.fangraphs.com/guts.aspx?type=cn`) into a literal table in `transform/war_constants.py` -- unlike Lahman, this can't currently reach back to 1871 (accurately transcribing older-era constants would need separate, careful verification that's out of scope for now). Requesting an unsupported year shows an error message.
+- **Batting value (wRAA)**: computed from the standard wOBA formula (denominator = AB + unintentional BB + SF + HBP), compared against that season's league-average wOBA to get Weighted Runs Above Average.
+- **Baserunning value**: stolen-base value only (SB/CS linear weights). This does not include a full Baserunning Runs (BsR)-style calculation (taking extra bases, avoiding double plays, etc.).
+- **Fielding value**: for 2016 onward, this uses Statcast's own precomputed leaderboard value (`statcast_oaa.fielding_runs_prevented`, i.e. OAA already converted to runs by Baseball Savant) directly. **2015 has no OAA data, so fielding value is treated as 0 for that season** -- a Lahman-raw-fielding-stats (putouts/assists/errors) approximation was considered but rejected, since none of that data captures the batted-ball-location catch-probability model that OAA is actually built on, so it wouldn't be a reliable substitute.
+- **Pitching value (FIP-based)**: FIP is computed as `(13xHR + 3x(BB+HBP) - 2xK) / IP + cFIP`, then compared against a league-average FIP computed the same way from that season's league totals, scaled by innings pitched into Runs Above Average.
+- **Park factor**: a new, from-scratch calculation (`query/park_factor.py`) built from Retrosheet Game Logs: a single-season "(runs scored + allowed per home game) / (runs scored + allowed per road game)" ratio. Being a single, unregressed season, it's noisy, so -- following standard practice -- it's regressed halfway toward a neutral 1.0 (`(raw + 1) / 2`) before being applied to a player's full-season value. Cross-checked against Lahman's own (multi-year, official) BPF for the 2024 season, the correlation is about 0.73 -- directionally consistent but not a match. Players traded mid-season get a games-weighted average across their teams.
+- **Replacement level / positional adjustment**: uses the published standard ".294 replacement win%" definition, converted into a league-wide replacement-runs pool using that season's actual average games-per-team (correctly scaling down for a shortened season like 2020's 60 games) and R/W (runs per marginal win). This project's own choice -- not a published number -- is to then split that pool 50/50 between batters and pitchers (FanGraphs instead uses an empirically-derived ~57/43 split with separate starter/reliever replacement levels, which this tool does not reproduce). Positional adjustment uses FanGraphs' published standard values (runs per 600 PA), applied using each player's most-played position for the season from `lahman_appearances`.
+- **Two-way players**: a two-way player like Shohei Ohtani simply has their batting-side value and pitching-side value added together. However, the batting-side positional adjustment penalizes their DH at-bats exactly as it would a full-time DH, without crediting the fact that they're also generating separate value as a pitcher -- so two-way players tend to come out with a lower WAR here than official sources report (confirmed directionally against Ohtani's real seasons during validation).
 
-## セットアップ
+## Setup
 
 ```bash
 python -m venv .venv
@@ -110,11 +125,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Python 3.11以上が必要です。
+Requires Python 3.11+.
 
-## 使い方
+## Usage
 
-### 1. データ取得 (初回のみ)
+### 1. Ingest data (first run only)
 
 ```bash
 python ingest/lahman.py
@@ -123,59 +138,89 @@ python ingest/statcast.py
 python ingest/retrosheet_playbyplay.py
 ```
 
-いずれも `data/processed/mlb.duckdb` にデータを格納します。`data/raw/` にダウンロード済みファイルをキャッシュするため、**一度取得したデータは再ダウンロードしません**(Statcastの打球データは前回取得日からの差分のみ取得、Sprint Speedはシーズン単位、選手IDテーブルは全体で1回のみ取得します)。強制的に再取得したい場合は `--force` を付けてください。
+Each script loads data into `data/processed/mlb.duckdb`. Downloaded files are
+cached under `data/raw/`, so **nothing already fetched is re-downloaded**
+(Statcast pitch data only fetches the delta since the last run; Sprint Speed
+is cached per season; the player ID lookup is fetched once, period). Pass
+`--force` to refetch anyway.
 
-`python cli.py` を初回実行した際にデータが未取得の場合も、自動的にingestスクリプトを実行するか確認されます。
+The first time you run `python cli.py` with no data ingested yet, it will
+offer to run the ingest scripts for you automatically.
 
-### 2. CLI起動
+### 2. Run the CLI
 
 ```bash
-python cli.py            # 日本語UI (デフォルト)
-python cli.py --lang en  # 英語UI
+python cli.py            # Japanese UI (default)
+python cli.py --lang en  # English UI
 ```
 
-## ディレクトリ構成
+## Directory layout
 
 ```
 mlb-record-finder/
-  data/raw/          ダウンロードした生データのキャッシュ (gitignore対象)
-  data/processed/     mlb.duckdb (単一ファイルDB)
+  data/raw/          cached downloads (gitignored)
+  data/processed/     mlb.duckdb (single-file DB)
   ingest/
-    lahman.py                  Lahman Baseball Databaseの取得・取込
-    retrosheet_gamelogs.py     Retrosheet Game Logsの取得・取込
-    statcast.py                 Statcast (pybaseball) の差分取得・取込 (打球データ/Sprint Speed/OAA/選手ID台帳)
-    retrosheet_playbyplay.py   Retrosheet Play-by-Playイベントファイルの取得・取込
-    _playbyplay_parser.py      イベントファイル記法のフルスクラッチパーサー
+    lahman.py                  fetch/load the Lahman Baseball Database
+    retrosheet_gamelogs.py     fetch/load Retrosheet game logs
+    statcast.py                 incrementally fetch/load Statcast via pybaseball
+                                 (pitch data / Sprint Speed / OAA / player ID lookup)
+    retrosheet_playbyplay.py   fetch/load Retrosheet play-by-play event files
+    _playbyplay_parser.py      from-scratch parser for the event-file grammar
   transform/
-    schema.sql          取り込んだテーブルに対するビュー定義 (得点期待値・勝利確率・レバレッジ含む)
-    war_constants.py     WAR算出用のwOBA/FIP年度別係数テーブル (2015〜2026年、独自簡易算出)
+    schema.sql          views built on top of the ingested tables
+                         (incl. run expectancy / win probability / leverage)
+    war_constants.py     year-by-year wOBA/FIP constants for WAR (2015-2026,
+                         this tool's own simplified estimate)
   query/
-    templates.py         14の記録検索テンプレート (SQL/関数)
-    war.py                独自簡易WARの算出ロジック (テンプレート14)
-    park_factor.py        Retrosheet Game Logsからの単年簡易パークファクター算出
+    templates.py         the 14 record-search templates (SQL/functions)
+    war.py                simplified WAR calculation logic (template 14)
+    park_factor.py        single-season simplified park factor from Retrosheet Game Logs
   i18n/
-    ja.py / en.py         UI文言辞書
-  cli.py                対話式CLI本体
+    ja.py / en.py         UI string dictionaries
+  cli.py                the interactive CLI
   requirements.txt
 ```
 
-## 技術スタック
+## Tech stack
 
 Python 3.11+ / pybaseball / pandas / duckdb / requests / tabulate
 
-## 多言語対応について
+## About i18n
 
-CLIのメニュー・プロンプト・エラーメッセージ・結果テーブルの列名などのUI文言はすべて `i18n/ja.py` と `i18n/en.py` の辞書経由で出し分けています。選手名・球団名などのデータ自体は原則として原語(英語)表記のままです。
+All UI text -- menu items, prompts, error messages, result table column
+labels -- is routed through the `i18n/ja.py` / `i18n/en.py` dictionaries.
+The underlying data itself (player names, team names, etc.) is left in its
+original (English) form rather than being translated.
 
-## 既知の制約
+## Known limitations
 
-- Lahmanデータは2025年シーズンまで(SABR公式版、上記参照)。
-- Statcastは2015年シーズン以降を対象に取得(シーズン単位で順次バックフィル中。取得済み範囲は `data/raw/statcast/manifest.json` を参照)。
-- チームの勝率ウィンドウ検索(テンプレート4)は、シーズンをまたぐ連続試合は対象外です。
-- SABR版のLahmanデータには一部Negro Leaguesの球団・選手データも含まれています(例: New York Black Yankees)。球団名検索で複数候補が出た場合は番号で選択してください。
-- テンプレート6・7(バレル率・期待成績)は打者側の指標のため、投手が打席に立った打球(まれなケース)は打者本人の成績として正しく集計されますが、逆に投手成績としての集計は行っていません。
-- テンプレート9・10の基盤となるRetrosheet Play-by-Play(イベントファイル)データは、デフォルトで直近5シーズンのみ取得対象です。また、Retrosheet側のPlay-by-Play記録自体、1920年代以前は部分的にしか整備されていません(1871年まで遡れるテンプレート4のGame Logsより厳しい制約です)。
-- テンプレート9・10の勝利確率・レバレッジ指数は実績ベースの統計モデルではなく近似計算です。詳細は上記の実装メモを参照してください。
-- テンプレート12(OAA)は捕手が対象外です(Baseball Savant側のリーダーボード自体が捕手に非対応)。また機会数の閾値はSavantの「qualified」基準に固定されており、テンプレート8のSprint Speedのようにクエリ時に変更することはできません。
-- テンプレート13(アームアングル)はシーズン平均値のランキングです。球種ごとの傾向(例: 同じ投手でもスライダーとフォーシームでアームアングルが数度変わるケース)までは区別していません。
-- **テンプレート14(シーズンWARランキング)は本ツール独自の簡易算出であり、公式のFanGraphs (fWAR) / Baseball-Reference (bWAR) とは一致しません。** 対応シーズンも2015〜2026年のみです。詳細な簡略化点は上記の実装メモを参照してください。
+- Lahman data goes through the 2025 season (official SABR edition, see above).
+- Statcast ingest covers the 2015 season onward (backfilled season by
+  season; see `data/raw/statcast/manifest.json` for what's fetched so far).
+- The winning-percentage window search (template 4) does not consider
+  windows that span across a season boundary.
+- The SABR edition of the Lahman data includes some Negro Leagues teams and
+  players (e.g. the New York Black Yankees). If a franchise name search
+  returns multiple matches, pick the one you want by number.
+- Templates 6 and 7 are batter-side leaderboards only; a pitcher's own
+  batting stats (rare, e.g. in NL parks) are attributed to them correctly as
+  a batter, but pitching performance is not aggregated by these templates.
+- Retrosheet's play-by-play (event-file) data, which templates 9 and 10 are
+  built on, is only fetched for the most recent 5 seasons by default, and
+  Retrosheet's own play-by-play record-keeping is only partial before the
+  1920s -- this is a stricter cutoff than the Game Logs used by template 4,
+  which cover back to 1871.
+- Templates 9-10's win probability and leverage index are approximations,
+  not an empirical model -- see the implementation notes above.
+- Template 12 (OAA) excludes catchers, since Baseball Savant's own
+  leaderboard doesn't cover them. Its attempts threshold is also fixed at
+  Savant's "qualified" cutoff and, unlike template 8's Sprint Speed, cannot
+  be changed at query time.
+- Template 13 (Arm Angle) ranks season averages only; it doesn't break out
+  per-pitch-type differences (a pitcher's arm angle can shift a few degrees
+  between, say, a slider and a four-seam fastball).
+- **Template 14 (Season WAR ranking) is this tool's own simplified estimate
+  and does NOT match official FanGraphs (fWAR) or Baseball-Reference (bWAR)
+  numbers.** It only supports the 2015-2026 seasons. See the implementation
+  notes above for the full list of simplifications.

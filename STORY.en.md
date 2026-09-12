@@ -93,7 +93,7 @@ Which means if the White Sox keep this up and actually win the American League p
 
 ## Where it stands now, and why I didn't turn it into a hosted service
 
-Phases 1 through 4 are all implemented, tested, and pushed to GitHub. I deliberately didn't turn this into a hosted web service anyone can just use. Statcast and Retrosheet data are free to access, but MLB.com's terms of service restrict redistributing automatically-collected data, and hosting it publicly felt like it'd run straight into that. So the code is open source, and running it is on you. Both README.md and README.en.md carry the same two disclaimers: limited completeness for 19th-century data, and the fact that WAR here is a homegrown simplified calculation.
+Phases 1 through 4 are all implemented, tested, and pushed to GitHub. I deliberately didn't turn this into a hosted web service anyone can just use. Statcast and Retrosheet data are free to access, but MLB.com's terms of service restrict redistributing automatically-collected data, and hosting it publicly felt like it'd run straight into that. So the code is open source, and running it is on you. Both README.md and README.ja.md carry the same two disclaimers: limited completeness for 19th-century data, and the fact that WAR here is a homegrown simplified calculation.
 
 This is really just the story of an accounting guy who fell for some baseball journalism and built something with an AI's help. If it's useful as one example of how far you can get by just combining free datasets, I'll take that as a win.
 
