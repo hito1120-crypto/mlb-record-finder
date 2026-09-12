@@ -17,6 +17,7 @@ STRINGS = {
         "バットスピード・スイング長ランキング (Statcast)",
         "OAA (Outs Above Average) 守備ランキング (Statcast)",
         "アームアングル(投球時の腕の角度)ランキング (Statcast)",
+        "シーズンWARランキング (独自簡易算出, 2015〜2026年対応) (Lahman/Statcast/Retrosheet)",
         "自由質問モード: 自然文で質問する (Gemini APIがSQLを生成)",
     ],
     "menu_exit": "終了",
@@ -48,6 +49,7 @@ STRINGS = {
     "prompt_min_sprint_opp": "対象とする最低機会数(min_opp)を入力してください",
     "prompt_min_swings": "対象とする最低スイング数を入力してください",
     "prompt_min_pitches": "対象とする最低投球数を入力してください",
+    "prompt_min_ip_war": "投手側の対象とする最低投球回(IP)を入力してください",
     "prompt_oaa_position": "守備位置を番号で選択してください",
     "oaa_catcher_notice": (
         "対象の守備位置を選んでください "
@@ -73,6 +75,14 @@ STRINGS = {
         "Play-by-Playデータ(テンプレート9・10)は直近5シーズンのみ取得対象で、\n"
         "Retrosheet側の記録精度は1920年代以前は部分的です。"
     ),
+
+    "war_notice": (
+        "⚠️ このWARは本ツール独自の簡易算出です。公開されているwOBA/FIP等の\n"
+        "サーベルメトリクス手法を参考に独自実装したものであり、FanGraphs (fWAR) や\n"
+        "Baseball-Reference (bWAR) の数値とは一致しません。対応シーズンは2015〜2026年のみです。\n"
+        "詳細な簡略化点は query/war.py のコメントを参照してください。"
+    ),
+    "war_unsupported_season": "指定されたシーズンにはWARが対応していません: {error}",
 
     "oaa_position_labels": {
         "1B": "一塁手 (1B)",
@@ -159,6 +169,15 @@ STRINGS = {
         "avg_arm_angle": "平均アームアングル(度)",
         "min_arm_angle": "最小アームアングル(度)",
         "max_arm_angle": "最大アームアングル(度)",
+        "PA": "打席数",
+        "IP": "投球回",
+        "FIP": "FIP",
+        "wRAA_park_adj": "wRAA(パーク補正後)",
+        "baserunning_runs": "走塁価値(点)",
+        "fielding_runs": "守備価値(点)",
+        "position_adj_runs": "ポジション補正(点)",
+        "pitching_RAA_park_adj": "投手価値(点, パーク補正後)",
+        "WAR": "WAR(独自簡易算出)",
     },
 
     "luck_labels": {

@@ -17,6 +17,7 @@ STRINGS = {
         "Bat Speed / Swing Length ranking (Statcast)",
         "Outs Above Average (OAA) fielding ranking (Statcast)",
         "Arm Angle ranking (Statcast)",
+        "Season WAR ranking (this tool's own simplified estimate, 2015-2026 only) (Lahman/Statcast/Retrosheet)",
         "Free-form question mode: ask in plain language (Gemini API generates SQL)",
     ],
     "menu_exit": "Exit",
@@ -48,6 +49,7 @@ STRINGS = {
     "prompt_min_sprint_opp": "Minimum sprint opportunities (min_opp)",
     "prompt_min_swings": "Minimum tracked swings",
     "prompt_min_pitches": "Minimum tracked pitches",
+    "prompt_min_ip_war": "Minimum innings pitched (IP) for the pitching side",
     "prompt_oaa_position": "Select a position by number",
     "oaa_catcher_notice": (
         "Choose a fielding position "
@@ -73,6 +75,15 @@ STRINGS = {
         "Play-by-Play data (templates 9-10) is only fetched for the most recent 5 seasons, and\n"
         "Retrosheet's own play-by-play coverage is only partial before the 1920s."
     ),
+
+    "war_notice": (
+        "⚠️ This WAR is this tool's own simplified estimate, independently built from\n"
+        "public wOBA/FIP-style sabermetric methodology. It is NOT FanGraphs (fWAR) or\n"
+        "Baseball-Reference (bWAR) and will not match those sites' numbers. Only the\n"
+        "2015-2026 seasons are supported. See query/war.py's comments for the full\n"
+        "list of simplifications."
+    ),
+    "war_unsupported_season": "WAR is not supported for that season: {error}",
 
     "oaa_position_labels": {
         "1B": "First Base (1B)",
@@ -159,6 +170,15 @@ STRINGS = {
         "avg_arm_angle": "Avg Arm Angle (deg)",
         "min_arm_angle": "Min Arm Angle (deg)",
         "max_arm_angle": "Max Arm Angle (deg)",
+        "PA": "PA",
+        "IP": "IP",
+        "FIP": "FIP",
+        "wRAA_park_adj": "wRAA (Park-Adj.)",
+        "baserunning_runs": "Baserunning Runs",
+        "fielding_runs": "Fielding Runs",
+        "position_adj_runs": "Positional Adj. Runs",
+        "pitching_RAA_park_adj": "Pitching RAA (Park-Adj.)",
+        "WAR": "WAR (simplified)",
     },
 
     "luck_labels": {

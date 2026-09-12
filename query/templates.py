@@ -13,6 +13,8 @@ from __future__ import annotations
 import duckdb
 import pandas as pd
 
+from query import war
+
 # Only these Lahman batting columns may be used as achievement thresholds
 # (templates 3 and 5). Column names can't be bound as SQL parameters, so we
 # validate against this whitelist before interpolating them into a query.
@@ -520,3 +522,24 @@ def oaa_ranking(con: duckdb.DuckDBPyConnection, season: int, pos: str = "ALL",
         """,
         [season, pos.upper(), limit],
     ).fetchdf()
+
+
+# --- Simplified WAR leaderboard (added after Phase 4) -------------------------
+#
+# See query/war.py's module docstring for the full methodology and its
+# disclosed simplifications versus FanGraphs (fWAR) / Baseball-Reference
+# (bWAR). war.SIMPLIFIED_WAR_NOTICE is the caveat string cli.py prints
+# alongside this template's results -- every WAR number this tool produces
+# is this project's own independent estimate, not a reproduction of either
+# site's published WAR.
+
+def season_war_ranking(con: duckdb.DuckDBPyConnection, year: int,
+                        min_pa: int = 100, min_ip: float = 20.0,
+                        limit: int = 50) -> pd.DataFrame:
+    """Template 14: this tool's own simplified season WAR leaderboard
+    (batting wRAA + baserunning + fielding + positional adjustment, and/or
+    FIP-based pitching value, each park-adjusted, plus a replacement-level
+    adjustment derived from the published .294 replacement win%). Only
+    supported for 2015-2026 -- raises ValueError for other years (see
+    transform/war_constants.py)."""
+    return war.season_war_leaderboard(con, year, min_pa=min_pa, min_ip=min_ip, limit=limit)

@@ -166,6 +166,13 @@ Rules:
   play-by-play-based queries, and through v_people/v_batting_by_franchise (playerID) for Lahman-based ones.
 - statcast_pitches.player_name is the PITCHER, not the batter. For batter-side stats, join
   statcast_pitches.batter (a numeric MLBAM id) to player_id_lookup.key_mlbam for the batter's name.
+- For any question about WAR (Wins Above Replacement), use v_war_season (columns: playerID, full_name,
+  season, teams, pa, wraa_park_adj, baserunning_runs, fielding_runs, primary_position, position_adj_runs,
+  ip, fip, pitching_raa_park_adj, war). Only seasons 2015-2026 are supported -- it returns zero rows for
+  any other season. This project's WAR is its own independently-derived, simplified estimate; it is NOT
+  FanGraphs (fWAR) or Baseball-Reference (bWAR) and will not match those sites' numbers -- always say so
+  in the "note" field when answering a WAR question. For a "top WAR" leaderboard, filter out small
+  samples (e.g. "WHERE pa >= 100 OR ip >= 20") the same way the ranking templates do.
 - If the question is ambiguous, make a reasonable baseball-domain interpretation and briefly explain
   the choice in "note" (leave "note" as "" if no explanation is needed).
 - Set "complexity" to "complex" only when the question needs multi-step statistical reasoning, exact-match

@@ -300,6 +300,20 @@ def handle_oaa(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     print_table(df, S)
 
 
+def handle_season_war(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    year = prompt_int(S["prompt_year"], S)
+    min_pa = prompt_int(S["prompt_min_pa"], S, default=100)
+    min_ip = prompt_int(S["prompt_min_ip_war"], S, default=20)
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    print(S["war_notice"])
+    try:
+        df = q.season_war_ranking(con, year, min_pa=min_pa, min_ip=min_ip, limit=limit)
+    except ValueError as e:
+        print(S["war_unsupported_season"].format(error=e))
+        return
+    print_table(df, S)
+
+
 def handle_free_question(con: duckdb.DuckDBPyConnection, S: dict, lang: str) -> None:
     if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
         print(S["nl_no_api_key"])
@@ -344,6 +358,7 @@ HANDLERS = [
     handle_bat_speed,
     handle_oaa,
     handle_arm_angle,
+    handle_season_war,
 ]
 
 
