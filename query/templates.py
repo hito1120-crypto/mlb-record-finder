@@ -405,3 +405,43 @@ def highest_leverage_plays(con: duckdb.DuckDBPyConnection,
     """
     params.append(limit)
     return con.execute(sql, params).fetchdf()
+
+
+# --- Statcast bat-tracking / arm-angle templates (Phase 4) -------------------
+#
+# bat_speed / swing_length (and, for a later template, arm_angle) are plain
+# columns on statcast_pitches already -- Baseball Savant added them to the
+# same pitch-level CSV export that ingest/statcast.py pulls via
+# pybaseball.statcast(), so no new ingest step or API call was needed; simply
+# re-running ingest/statcast.py's load_to_duckdb() against the already-cached
+# parquet files picked them up. Confirmed via a throwaway pybaseball venv
+# (see the Phase 4 investigation) that both columns are non-null only on
+# pitches where the batter actually took a swing (~46% of pitches in a
+# sampled day), which is why min_swings below counts swings, not pitches.
+
+def bat_speed_ranking(con: duckdb.DuckDBPyConnection, season: int,
+                       min_swings: int = 50, limit: int = 50) -> pd.DataFrame:
+    """Template 11: Bat Speed / Swing Length ranking for a season, aggregated
+    per batter (joined against player_id_lookup the same way
+    barrel_hard_hit_ranking is, since statcast_pitches.player_name is the
+    pitcher, not the batter -- see that template's module note above)."""
+    return con.execute(
+        """
+        SELECT
+            (pl.name_first || ' ' || pl.name_last) AS player_name,
+            COUNT(*) AS swings,
+            AVG(sp.bat_speed) AS avg_bat_speed,
+            MAX(sp.bat_speed) AS max_bat_speed,
+            AVG(sp.swing_length) AS avg_swing_length
+        FROM statcast_pitches sp
+        JOIN player_id_lookup pl ON sp.batter = pl.key_mlbam
+        WHERE sp.game_year = ?
+          AND sp.bat_speed IS NOT NULL
+          AND sp.swing_length IS NOT NULL
+        GROUP BY sp.batter, pl.name_first, pl.name_last
+        HAVING COUNT(*) >= ?
+        ORDER BY avg_bat_speed DESC
+        LIMIT ?
+        """,
+        [season, min_swings, limit],
+    ).fetchdf()

@@ -14,6 +14,7 @@ STRINGS = {
         "Sprint Speed ranking (Statcast)",
         "Games with a leadoff HR AND a walk-off HR (Retrosheet Play-by-Play)",
         "Highest-leverage plate appearances (Retrosheet Play-by-Play)",
+        "Bat Speed / Swing Length ranking (Statcast)",
         "Free-form question mode: ask in plain language (Gemini API generates SQL)",
     ],
     "menu_exit": "Exit",
@@ -43,6 +44,7 @@ STRINGS = {
     "prompt_min_batted_balls": "Minimum batted-ball events",
     "prompt_min_pa": "Minimum plate appearances (PA)",
     "prompt_min_sprint_opp": "Minimum sprint opportunities (min_opp)",
+    "prompt_min_swings": "Minimum tracked swings",
 
     "prompt_leverage_start_date": "Start date (YYYY-MM-DD, blank = no limit)",
     "prompt_leverage_end_date": "End date (YYYY-MM-DD, blank = no limit)",
@@ -122,6 +124,10 @@ STRINGS = {
         "leverage_index": "Leverage Index",
         "inning": "Inning",
         "game_id": "Game ID",
+        "swings": "Swings",
+        "avg_bat_speed": "Avg Bat Speed (mph)",
+        "max_bat_speed": "Max Bat Speed (mph)",
+        "avg_swing_length": "Avg Swing Length (ft)",
     },
 
     "luck_labels": {

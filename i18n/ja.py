@@ -14,6 +14,7 @@ STRINGS = {
         "Sprint Speedランキング (Statcast)",
         "先頭打者本塁打+サヨナラ本塁打の試合検索 (Retrosheet Play-by-Play)",
         "レバレッジ指数が最も高かった打席検索 (Retrosheet Play-by-Play)",
+        "バットスピード・スイング長ランキング (Statcast)",
         "自由質問モード: 自然文で質問する (Gemini APIがSQLを生成)",
     ],
     "menu_exit": "終了",
@@ -43,6 +44,7 @@ STRINGS = {
     "prompt_min_batted_balls": "対象とする最低打球イベント数を入力してください",
     "prompt_min_pa": "対象とする最低打席数(PA)を入力してください",
     "prompt_min_sprint_opp": "対象とする最低機会数(min_opp)を入力してください",
+    "prompt_min_swings": "対象とする最低スイング数を入力してください",
 
     "prompt_leverage_start_date": "検索対象の開始日を入力 (YYYY-MM-DD, 空欄で指定なし)",
     "prompt_leverage_end_date": "検索対象の終了日を入力 (YYYY-MM-DD, 空欄で指定なし)",
@@ -122,6 +124,10 @@ STRINGS = {
         "leverage_index": "レバレッジ指数",
         "inning": "イニング",
         "game_id": "試合ID",
+        "swings": "スイング数",
+        "avg_bat_speed": "平均バットスピード(mph)",
+        "max_bat_speed": "最高バットスピード(mph)",
+        "avg_swing_length": "平均スイング長(ft)",
     },
 
     "luck_labels": {

@@ -251,6 +251,14 @@ def handle_highest_leverage(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     print_table(df, S)
 
 
+def handle_bat_speed(con: duckdb.DuckDBPyConnection, S: dict) -> None:
+    season = prompt_statcast_season(con, S)
+    min_swings = prompt_int(S["prompt_min_swings"], S, default=50)
+    limit = prompt_int(S["prompt_result_limit"].format(default=50), S, default=50)
+    df = q.bat_speed_ranking(con, season, min_swings=min_swings, limit=limit)
+    print_table(df, S)
+
+
 def handle_free_question(con: duckdb.DuckDBPyConnection, S: dict, lang: str) -> None:
     if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
         print(S["nl_no_api_key"])
@@ -292,6 +300,7 @@ HANDLERS = [
     handle_sprint_speed,
     handle_leadoff_and_walkoff,
     handle_highest_leverage,
+    handle_bat_speed,
 ]
 
 
