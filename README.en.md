@@ -29,6 +29,11 @@ DuckDB file and prints the results as a table.
 13. **Arm Angle ranking** (Statcast) -- ranks pitchers by average arm angle (release-point angle) for a given season, filterable by a minimum number of tracked pitches
 14. **Season WAR ranking** (Lahman/Statcast/Retrosheet, 2015-2026 seasons only) -- ⚠️ **this tool's own simplified WAR estimate. It does NOT match official FanGraphs (fWAR) or Baseball-Reference (bWAR) numbers** (details below)
 
+## How This Differs From Existing Services
+
+Established tools for searching MLB player and record data already exist, such as Baseball-Reference.com's paid "Stathead" service and Baseball Savant's official "Statcast Search," both of which use filter-based UIs.
+This tool's key difference is its free-form question mode: ask a question in natural Japanese or English, and an AI generates the SQL query automatically, showing you the generated SQL alongside the results. It also combines WAR, win probability, leverage index, and detailed Statcast metrics (OAA, bat speed, arm angle, etc.) into a single local database, usable for free without any account.
+
 ## Data sources
 
 All free and publicly available.
