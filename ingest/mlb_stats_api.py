@@ -124,14 +124,19 @@ def _build_batting_df(season: int, splits: list[dict], team_abbrev: dict[int, st
             "teamID": team_abbrev.get(team.get("id"), team.get("name")),
             "G": stat.get("gamesPlayed") or 0,
             "AB": stat.get("atBats") or 0,
+            "R": stat.get("runs") or 0,
             "H": stat.get("hits") or 0,
             "2B": stat.get("doubles") or 0,
             "3B": stat.get("triples") or 0,
             "HR": stat.get("homeRuns") or 0,
+            "RBI": stat.get("rbi") or 0,
             "BB": stat.get("baseOnBalls") or 0,
             "IBB": stat.get("intentionalWalks") or 0,
+            "SO": stat.get("strikeOuts") or 0,
             "HBP": stat.get("hitByPitch") or 0,
+            "SH": stat.get("sacBunts") or 0,
             "SF": stat.get("sacFlies") or 0,
+            "GIDP": stat.get("groundIntoDoublePlay") or 0,
             "SB": stat.get("stolenBases") or 0,
             "CS": stat.get("caughtStealing") or 0,
             "primary_position": (s.get("position") or {}).get("abbreviation"),
@@ -164,8 +169,9 @@ _TABLE_SCHEMAS = {
     "mlbapi_teams": '(season INTEGER, team_id INTEGER, teamID VARCHAR, G INTEGER)',
     "mlbapi_batting": (
         '(season INTEGER, playerID VARCHAR, full_name VARCHAR, teamID VARCHAR, '
-        'G INTEGER, AB INTEGER, H INTEGER, "2B" INTEGER, "3B" INTEGER, HR INTEGER, '
-        'BB INTEGER, IBB INTEGER, HBP INTEGER, SF INTEGER, SB INTEGER, CS INTEGER, '
+        'G INTEGER, AB INTEGER, R INTEGER, H INTEGER, "2B" INTEGER, "3B" INTEGER, HR INTEGER, '
+        'RBI INTEGER, BB INTEGER, IBB INTEGER, SO INTEGER, HBP INTEGER, SH INTEGER, '
+        'SF INTEGER, GIDP INTEGER, SB INTEGER, CS INTEGER, '
         'primary_position VARCHAR)'
     ),
     "mlbapi_pitching": (

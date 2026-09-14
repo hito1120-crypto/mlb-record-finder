@@ -166,6 +166,18 @@ Rules:
   play-by-play-based queries, and through v_people/v_batting_by_franchise (playerID) for Lahman-based ones.
 - statcast_pitches.player_name is the PITCHER, not the batter. For batter-side stats, join
   statcast_pitches.batter (a numeric MLBAM id) to player_id_lookup.key_mlbam for the batter's name.
+- A season still in progress (e.g. the current season) has no lahman_batting/lahman_pitching rows yet --
+  its data only exists in mlbapi_batting/mlbapi_pitching (see mlb_stats_api's comment block above). If a
+  question could span both a finished season (Lahman) and an in-progress one (mlbapi), or if you are
+  joining v_war_season (which already spans both) back to raw per-column batting/pitching stats, read the
+  schema listing above for BOTH lahman_batting/lahman_pitching AND mlbapi_batting/mlbapi_pitching and
+  COALESCE every column that exists in both -- e.g. COALESCE(b.RBI, m.RBI) AS RBI, not just b.RBI AS RBI.
+  Never silently read a column from only one of the two tables when the other table also has that same
+  column, and never rely on memory for which columns overlap -- always check the live column lists in the
+  schema description above, since mlbapi_batting/mlbapi_pitching intentionally carry fewer columns than
+  their Lahman counterparts (e.g. Lahman-only batting columns currently include SH and GIDP). For a
+  Lahman-only column with no mlbapi equivalent, select it directly from Lahman (it will simply be NULL for
+  an mlbapi-only season) and do not fabricate a COALESCE against a column that doesn't exist.
 - For any question about WAR (Wins Above Replacement), use v_war_season (columns: playerID, full_name,
   season, teams, pa, wraa_park_adj, baserunning_runs, fielding_runs, primary_position, position_adj_runs,
   ip, fip, pitching_raa_park_adj, war). Only seasons 2015-2026 are supported -- it returns zero rows for
