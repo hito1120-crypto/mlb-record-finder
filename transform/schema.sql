@@ -618,6 +618,197 @@ JOIN v_people p ON p.playerID = pit.playerID
 LEFT JOIN v_war_pitching_park_factor pf ON pf.playerID = pit.playerID AND pf.season = pit.season
 JOIN v_war_replacement_pools rp ON rp.season = pit.season;
 
+-- --- MLB Stats API fallback mirror (for a season with no Lahman data yet) --
+--
+-- Line-for-line SQL mirror of the mlbapi (source="mlbapi") branch of
+-- query/war.py's season_war_leaderboard() -- see _season_source() there:
+-- Lahman is a season-end snapshot (only published well after a season
+-- ends), so a season still in progress (e.g. 2026 while it's being played)
+-- has no lahman_teams/lahman_batting/lahman_pitching rows at all. For such a
+-- season, query/war.py instead reads from the mlbapi_teams/mlbapi_batting/
+-- mlbapi_pitching tables (ingest/mlb_stats_api.py -- populated on demand,
+-- see below), which mirror the same shape one row per player-season already
+-- (no stint-summing needed, unlike Lahman). Two differences from the Lahman
+-- path, both matching query/war.py exactly:
+--   - Park factor is neutral (1.0): Retrosheet Game Logs (this project's
+--     park-factor source) isn't published for a season still in progress
+--     either, so there's nothing to compute a real park factor from.
+--   - primary_position comes directly from mlbapi_batting (the MLB Stats
+--     API's own position abbreviation for that player's stats split), not
+--     from Lahman Appearances games-played counts.
+--
+-- Caveat: these mlbapi_* tables are only ever populated by an explicit
+-- ingest -- either ingest/mlb_stats_api.py's CLI, or query/war.py's
+-- automatic ensure_season_loaded() call the first time a Python caller (the
+-- CLI's WAR template) asks for that season. Free-form question mode
+-- (NL2SQL) only ever runs read-only SELECT/WITH SQL, so it can't trigger
+-- that fetch itself -- a season with neither Lahman nor a previously-cached
+-- mlbapi ingest still returns zero rows here until one of those has run at
+-- least once.
+--
+-- DuckDB validates a view's referenced tables at CREATE VIEW time (not
+-- lazily at query time), so v_war_season below -- which UNIONs this whole
+-- mlbapi branch in -- would fail to even exist on a fresh DB that has
+-- Lahman data but has never cached a single mlbapi season (mlbapi_teams/
+-- mlbapi_batting/mlbapi_pitching wouldn't exist yet). These three
+-- IF NOT EXISTS stubs (schema copied verbatim from
+-- ingest/mlb_stats_api.py's _TABLE_SCHEMAS -- keep the two in sync) guard
+-- against that: they're a no-op once ingest/mlb_stats_api.py has actually
+-- loaded a season (CREATE TABLE IF NOT EXISTS there matches this schema
+-- exactly), and otherwise just leave the tables present-but-empty, which is
+-- all v_war_season needs to keep working when the Lahman-only case applies.
+CREATE TABLE IF NOT EXISTS mlbapi_teams (season INTEGER, team_id INTEGER, teamID VARCHAR, G INTEGER);
+CREATE TABLE IF NOT EXISTS mlbapi_batting (
+    season INTEGER, playerID VARCHAR, full_name VARCHAR, teamID VARCHAR,
+    G INTEGER, AB INTEGER, H INTEGER, "2B" INTEGER, "3B" INTEGER, HR INTEGER,
+    BB INTEGER, IBB INTEGER, HBP INTEGER, SF INTEGER, SB INTEGER, CS INTEGER,
+    primary_position VARCHAR
+);
+CREATE TABLE IF NOT EXISTS mlbapi_pitching (
+    season INTEGER, playerID VARCHAR, full_name VARCHAR, teamID VARCHAR,
+    G INTEGER, IPouts INTEGER, HR INTEGER, BB INTEGER, HBP INTEGER, SO INTEGER
+);
+
+CREATE OR REPLACE VIEW v_war_batting_season_mlbapi AS
+WITH with_pa AS (
+    SELECT
+        b.playerID, b.full_name, b.season, b.teamID AS teams,
+        b.AB AS ab, b.H AS h, b."2B" AS b2, b."3B" AS b3, b.HR AS hr,
+        b.BB AS bb, b.IBB AS ibb, b.HBP AS hbp, b.SF AS sf, b.SB AS sb, b.CS AS cs,
+        c.wBB, c.wHBP, c.w1B, c.w2B, c.w3B, c.wHR, c.wOBA AS lg_wOBA, c.wOBAScale,
+        c.runSB, c.runCS,
+        (b.AB + (b.BB - COALESCE(b.IBB, 0)) + COALESCE(b.SF, 0) + COALESCE(b.HBP, 0)) AS woba_pa
+    FROM mlbapi_batting b
+    JOIN v_war_constants c ON c.season = b.season
+)
+SELECT
+    playerID, full_name, season, teams, ab, h, b2 AS "2B", b3 AS "3B", hr, bb, ibb, hbp, sf, sb, cs,
+    woba_pa,
+    (wBB * (bb - COALESCE(ibb, 0)) + wHBP * COALESCE(hbp, 0)
+        + w1B * (h - b2 - b3 - hr) + w2B * b2 + w3B * b3 + wHR * hr) / NULLIF(woba_pa, 0) AS woba,
+    ((wBB * (bb - COALESCE(ibb, 0)) + wHBP * COALESCE(hbp, 0)
+        + w1B * (h - b2 - b3 - hr) + w2B * b2 + w3B * b3 + wHR * hr) / NULLIF(woba_pa, 0)
+        - lg_wOBA) / wOBAScale * woba_pa AS wraa,
+    runSB * COALESCE(sb, 0) + runCS * COALESCE(cs, 0) AS baserunning_runs
+FROM with_pa;
+
+CREATE OR REPLACE VIEW v_war_pitching_league_totals_mlbapi AS
+SELECT season, SUM(IPouts) AS ipouts, SUM(HR) AS hr, SUM(BB) AS bb,
+       SUM(HBP) AS hbp, SUM(SO) AS so
+FROM mlbapi_pitching
+GROUP BY season;
+
+CREATE OR REPLACE VIEW v_war_pitching_season_mlbapi AS
+SELECT
+    a.playerID, a.full_name, a.season, a.teamID AS teams,
+    a.IPouts / 3.0 AS ip,
+    (13 * a.HR + 3 * (a.BB + COALESCE(a.HBP, 0)) - 2 * a.SO) / NULLIF(a.IPouts / 3.0, 0) + c.cFIP AS fip,
+    (13 * lg.hr + 3 * (lg.bb + COALESCE(lg.hbp, 0)) - 2 * lg.so) / NULLIF(lg.ipouts / 3.0, 0) + c.cFIP AS league_fip,
+    (
+        ((13 * lg.hr + 3 * (lg.bb + COALESCE(lg.hbp, 0)) - 2 * lg.so) / NULLIF(lg.ipouts / 3.0, 0) + c.cFIP)
+        - ((13 * a.HR + 3 * (a.BB + COALESCE(a.HBP, 0)) - 2 * a.SO) / NULLIF(a.IPouts / 3.0, 0) + c.cFIP)
+    ) / 9 * (a.IPouts / 3.0) AS pitching_raa
+FROM mlbapi_pitching a
+JOIN v_war_constants c ON c.season = a.season
+JOIN v_war_pitching_league_totals_mlbapi lg ON lg.season = a.season;
+
+-- Statcast OAA fielding value for the mlbapi path, joined directly on its
+-- own player_id (an MLB Advanced Media ID) via the same "mlbam_<id>"
+-- playerID scheme ingest/mlb_stats_api.py uses -- matches query/war.py's
+-- fielding_runs_for_season(source="mlbapi"): no Lahman crosswalk needed,
+-- since a rookie who debuted this season wouldn't be in
+-- lahman_people/player_id_lookup yet anyway.
+CREATE OR REPLACE VIEW v_war_fielding_season_mlbapi AS
+SELECT DISTINCT
+    'mlbam_' || CAST(oaa.player_id AS VARCHAR) AS playerID,
+    oaa.season,
+    oaa.fielding_runs_prevented
+FROM statcast_oaa oaa
+WHERE oaa.pos = 'ALL';
+
+-- Replacement-level runs pools for the mlbapi path -- same .294-anchor
+-- derivation as v_war_replacement_pools, but reading avg_games/n_teams and
+-- the PA/IP totals from mlbapi_teams/mlbapi_batting/mlbapi_pitching. For a
+-- season still in progress, avg_games is that season's games-played-so-far,
+-- so replacement level scales down along with however much of the season
+-- has actually been played -- matches query/war.py's
+-- replacement_runs_pools(source="mlbapi").
+CREATE OR REPLACE VIEW v_war_replacement_pools_mlbapi AS
+WITH teams AS (
+    SELECT season, COUNT(DISTINCT teamID) AS n_teams, AVG(G) AS avg_games
+    FROM mlbapi_teams
+    GROUP BY season
+),
+batting_pa AS (
+    SELECT season,
+           SUM(AB) + (SUM(BB) - SUM(IBB)) + SUM(HBP) + SUM(SF) AS total_pa
+    FROM mlbapi_batting
+    GROUP BY season
+),
+pitching_ip AS (
+    SELECT season, SUM(IPouts) / 3.0 AS total_ip
+    FROM mlbapi_pitching
+    GROUP BY season
+)
+SELECT
+    c.season,
+    ((0.5 - 0.294) * t.avg_games * c.R_W * t.n_teams * 0.5) / NULLIF(bp.total_pa, 0) AS runs_per_pa,
+    ((0.5 - 0.294) * t.avg_games * c.R_W * t.n_teams * 0.5) / NULLIF(pi.total_ip, 0) AS runs_per_ip
+FROM v_war_constants c
+JOIN teams t ON t.season = c.season
+JOIN batting_pa bp ON bp.season = c.season
+JOIN pitching_ip pi ON pi.season = c.season;
+
+-- Final batting-side value per player-season for the mlbapi path -- same
+-- shape as v_war_batting_value, but with park factor fixed at neutral 1.0
+-- (see this block's header comment) and primary_position read straight off
+-- mlbapi_batting instead of Lahman Appearances.
+CREATE OR REPLACE VIEW v_war_batting_value_mlbapi AS
+SELECT
+    b.playerID,
+    b.full_name,
+    b.season,
+    b.teams,
+    b.woba_pa AS pa,
+    b.woba,
+    b.wraa,
+    b.wraa AS wraa_park_adj,
+    b.baserunning_runs,
+    COALESCE(f.fielding_runs_prevented, 0) AS fielding_runs,
+    mb.primary_position,
+    CASE WHEN mb.primary_position IS NULL OR b.woba_pa <= 0 THEN 0.0
+         ELSE COALESCE(pa_adj.runs_per_600pa, 0) * b.woba_pa / 600.0 END AS position_adj_runs,
+    rp.runs_per_pa * b.woba_pa AS batting_replacement_runs,
+    b.wraa
+        + b.baserunning_runs
+        + COALESCE(f.fielding_runs_prevented, 0)
+        + CASE WHEN mb.primary_position IS NULL OR b.woba_pa <= 0 THEN 0.0
+               ELSE COALESCE(pa_adj.runs_per_600pa, 0) * b.woba_pa / 600.0 END
+        + rp.runs_per_pa * b.woba_pa AS batting_side_runs
+FROM v_war_batting_season_mlbapi b
+LEFT JOIN mlbapi_batting mb ON mb.playerID = b.playerID AND mb.season = b.season
+LEFT JOIN v_war_fielding_season_mlbapi f ON f.playerID = b.playerID AND f.season = b.season
+LEFT JOIN v_war_position_adjustments pa_adj ON pa_adj.position = mb.primary_position
+JOIN v_war_replacement_pools_mlbapi rp ON rp.season = b.season;
+
+-- Final pitching-side value per player-season for the mlbapi path -- same
+-- shape as v_war_pitching_value, with park factor fixed at neutral 1.0.
+CREATE OR REPLACE VIEW v_war_pitching_value_mlbapi AS
+SELECT
+    pit.playerID,
+    pit.full_name,
+    pit.season,
+    pit.teams,
+    pit.ip,
+    pit.fip,
+    pit.league_fip,
+    pit.pitching_raa,
+    pit.pitching_raa AS pitching_raa_park_adj,
+    rp.runs_per_ip * pit.ip AS pitching_replacement_runs,
+    pit.pitching_raa + rp.runs_per_ip * pit.ip AS pitching_side_runs
+FROM v_war_pitching_season_mlbapi pit
+JOIN v_war_replacement_pools_mlbapi rp ON rp.season = pit.season;
+
 -- The final simplified-WAR leaderboard view: one row per player-season that
 -- has either batting or pitching value (a two-way player like Shohei Ohtani
 -- gets both sides added together, same as query/war.py's
@@ -625,6 +816,18 @@ JOIN v_war_replacement_pools rp ON rp.season = pit.season;
 -- (NL2SQL-generated SQL, or a future template) should add
 -- "WHERE pa >= ... OR ip >= ..." themselves for a real leaderboard, the same
 -- way v_team_games leaves win-percentage thresholds to its callers.
+--
+-- UNION of the Lahman-backed path and the mlbapi-fallback path above,
+-- matching query/war.py's _season_source(): a season is Lahman-backed if
+-- lahman_teams has any rows for it, otherwise (a season still in progress,
+-- with no Lahman data published yet) it falls back to the mlbapi_* tables.
+-- The mlbapi branch's WHERE clause below is the SQL equivalent of that same
+-- season-source check, so a season can never be double-counted from both
+-- branches. data_source labels which path produced each row, so a caller
+-- (NL2SQL-generated SQL) can surface query/war.py's PROVISIONAL_WAR_NOTICE
+-- caveat for 'mlbapi' rows -- see query/war.py's module docstring for why a
+-- season with no Lahman data yet is only ever a provisional, in-progress
+-- estimate.
 CREATE OR REPLACE VIEW v_war_season AS
 SELECT
     COALESCE(bat.playerID, pit.playerID) AS playerID,
@@ -640,8 +843,33 @@ SELECT
     COALESCE(pit.ip, 0) AS ip,
     pit.fip,
     COALESCE(pit.pitching_raa_park_adj, 0) AS pitching_raa_park_adj,
-    (COALESCE(bat.batting_side_runs, 0) + COALESCE(pit.pitching_side_runs, 0)) / c.R_W AS war
+    (COALESCE(bat.batting_side_runs, 0) + COALESCE(pit.pitching_side_runs, 0)) / c.R_W AS war,
+    'lahman' AS data_source
 FROM v_war_batting_value bat
 FULL JOIN v_war_pitching_value pit
     ON pit.playerID = bat.playerID AND pit.season = bat.season
-JOIN v_war_constants c ON c.season = COALESCE(bat.season, pit.season);
+JOIN v_war_constants c ON c.season = COALESCE(bat.season, pit.season)
+
+UNION ALL
+
+SELECT
+    COALESCE(bat.playerID, pit.playerID) AS playerID,
+    COALESCE(bat.full_name, pit.full_name) AS full_name,
+    COALESCE(bat.season, pit.season) AS season,
+    COALESCE(bat.teams, pit.teams) AS teams,
+    COALESCE(bat.pa, 0) AS pa,
+    bat.wraa_park_adj,
+    bat.baserunning_runs,
+    bat.fielding_runs,
+    bat.primary_position,
+    bat.position_adj_runs,
+    COALESCE(pit.ip, 0) AS ip,
+    pit.fip,
+    COALESCE(pit.pitching_raa_park_adj, 0) AS pitching_raa_park_adj,
+    (COALESCE(bat.batting_side_runs, 0) + COALESCE(pit.pitching_side_runs, 0)) / c.R_W AS war,
+    'mlbapi' AS data_source
+FROM v_war_batting_value_mlbapi bat
+FULL JOIN v_war_pitching_value_mlbapi pit
+    ON pit.playerID = bat.playerID AND pit.season = bat.season
+JOIN v_war_constants c ON c.season = COALESCE(bat.season, pit.season)
+WHERE COALESCE(bat.season, pit.season) NOT IN (SELECT DISTINCT yearID FROM lahman_teams);
