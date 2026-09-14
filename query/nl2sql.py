@@ -185,6 +185,17 @@ Rules:
   FanGraphs (fWAR) or Baseball-Reference (bWAR) and will not match those sites' numbers -- always say so
   in the "note" field when answering a WAR question. For a "top WAR" leaderboard, filter out small
   samples (e.g. "WHERE pa >= 100 OR ip >= 20") the same way the ranking templates do.
+- No table/view stores AVG/OBP/SLG/OPS directly -- always derive them yourself from the raw counting
+  columns (AB, H, "2B", "3B", HR, BB, HBP, SF; IBB is NOT subtracted for OBP), at whatever grain the
+  question is aggregated to (e.g. SUM(...) per player-season, not per individual game row), guarding every
+  division with NULLIF(denominator, 0) so a zero-AB/zero-PA player yields NULL rather than an error:
+    avg = H / AB
+    obp = (H + BB + HBP) / (AB + BB + HBP + SF)
+    slg = (H + 2*"2B" + 3*"3B" + 4*HR) / AB   -- i.e. total bases / AB; total bases = H + "2B" + 2*"3B" + 3*HR also works, same value
+    ops = obp + slg
+  Compute obp and slg from the exact same SUMs first (DuckDB lets you reference an earlier SELECT-list
+  alias later in the same SELECT, e.g. "... AS obp, ... AS slg, obp + slg AS ops"), then add them for ops
+  -- never approximate ops with AVG()/re-aggregating a per-row ratio, and never leave ops unselected.
 - If the question is ambiguous, make a reasonable baseball-domain interpretation and briefly explain
   the choice in "note" (leave "note" as "" if no explanation is needed).
 - Set "complexity" to "complex" only when the question needs multi-step statistical reasoning, exact-match
