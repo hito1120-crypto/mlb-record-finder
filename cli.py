@@ -330,6 +330,8 @@ def handle_season_war(con: duckdb.DuckDBPyConnection, S: dict) -> None:
     except ValueError as e:
         print(S["war_unsupported_season"].format(error=e))
         return
+    if df.attrs.get("data_source") == "mlbapi":
+        print(S["war_provisional_notice"])
     print_table(df, S)
 
 

@@ -84,6 +84,12 @@ STRINGS = {
         "list of simplifications."
     ),
     "war_unsupported_season": "WAR is not supported for that season: {error}",
+    "war_provisional_notice": (
+        "⚠️ PROVISIONAL: this season has no Lahman data yet, so these numbers\n"
+        "are built from live MLB Stats API totals as of the last data refresh, not a\n"
+        "final Lahman-verified season line. Park factor is neutral (1.0) for this\n"
+        "season (Retrosheet Game Logs aren't published yet either)."
+    ),
 
     "oaa_position_labels": {
         "1B": "First Base (1B)",

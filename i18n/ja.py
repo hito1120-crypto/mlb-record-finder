@@ -83,6 +83,12 @@ STRINGS = {
         "詳細な簡略化点は query/war.py のコメントを参照してください。"
     ),
     "war_unsupported_season": "指定されたシーズンにはWARが対応していません: {error}",
+    "war_provisional_notice": (
+        "⚠️ 暫定値: このシーズンはまだLahman DBに収録されていないため、\n"
+        "直近のデータ取得時点のMLB Stats API集計値から算出した進行中シーズンの\n"
+        "暫定WARです(Lahman確定版の数値ではありません)。パークファクターも\n"
+        "このシーズンは中立値(1.0)です(Retrosheet Game Logsも同様に未公開のため)。"
+    ),
 
     "oaa_position_labels": {
         "1B": "一塁手 (1B)",

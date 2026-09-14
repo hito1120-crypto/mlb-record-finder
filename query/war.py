@@ -24,6 +24,12 @@ simplifications versus fWAR:
   - Replacement level and the batting/pitching WAR pool split are both
     derived from the single published .294 replacement win% anchor via a
     50/50 split assumption -- see replacement_runs_pools()'s docstring.
+  - A season with no Lahman data yet (i.e. still in progress -- Lahman is
+    only published after a season ends) falls back to a PROVISIONAL
+    leaderboard built from live MLB Stats API totals instead -- see
+    _season_source() and ingest/mlb_stats_api.py's module docstring. Park
+    factor is neutral (1.0) for such a season, since Retrosheet Game Logs
+    (this project's park-factor source) also isn't published yet either.
 Every entry point below returns its numbers accompanied by the caveat
 string SIMPLIFIED_WAR_NOTICE so callers (CLI, NL2SQL) can surface it.
 """
@@ -33,6 +39,7 @@ from __future__ import annotations
 import duckdb
 import pandas as pd
 
+from ingest import mlb_stats_api
 from query import park_factor
 from transform.war_constants import (
     POSITION_ADJUSTMENT_PER_600PA,
@@ -45,6 +52,29 @@ SIMPLIFIED_WAR_NOTICE = (
     "from public wOBA/FIP methodology -- it is NOT FanGraphs (fWAR) or "
     "Baseball-Reference (bWAR) and will not match those sites."
 )
+
+PROVISIONAL_WAR_NOTICE = (
+    "This season has no Lahman data yet (Lahman is only published after a "
+    "season ends), so these numbers are a PROVISIONAL in-progress-season "
+    "estimate built from live MLB Stats API totals as of the last data "
+    "refresh -- not a final, Lahman-verified season line. Fielding value "
+    "(Statcast OAA) is still included where available; park factor is "
+    "neutral (1.0) for provisional seasons, since Retrosheet Game Logs "
+    "(this project's park-factor source) also isn't published for a season "
+    "still in progress."
+)
+
+
+def _season_source(con: duckdb.DuckDBPyConnection, year: int) -> str:
+    """'lahman' if `year` has real Lahman data loaded; otherwise 'mlbapi',
+    auto-fetching+caching that season from the MLB Stats API on demand if it
+    isn't already cached (see ingest/mlb_stats_api.py's module docstring for
+    why Lahman can't ever cover a season still in progress)."""
+    n = con.execute("SELECT COUNT(*) FROM lahman_teams WHERE yearID = ?", [year]).fetchone()[0]
+    if n > 0:
+        return "lahman"
+    mlb_stats_api.ensure_season_loaded(con, year)
+    return "mlbapi"
 
 
 def compute_wraa(stats: dict, year: int) -> dict:
@@ -114,15 +144,19 @@ def compute_pitching_value(stats: dict, year: int, league_totals: dict) -> dict:
     return {"IP": ip, "FIP": fip, "league_FIP": lg_fip, "RAA": raa}
 
 
-def league_totals_for_season(con: duckdb.DuckDBPyConnection, year: int) -> dict:
-    """Sums lahman_pitching's FIP-input columns across every pitcher in `year`,
-    for use as compute_pitching_value's league-average baseline."""
+def league_totals_for_season(con: duckdb.DuckDBPyConnection, year: int,
+                              source: str = "lahman") -> dict:
+    """Sums the FIP-input columns across every pitcher in `year`, for use as
+    compute_pitching_value's league-average baseline. source="mlbapi" reads
+    from the MLB Stats API fallback tables instead of Lahman (see
+    _season_source)."""
+    table, year_col = ("lahman_pitching", "yearID") if source == "lahman" else ("mlbapi_pitching", "season")
     row = con.execute(
-        """
+        f"""
         SELECT SUM(IPouts) AS IPouts, SUM(HR) AS HR, SUM(BB) AS BB,
                SUM(HBP) AS HBP, SUM(SO) AS SO
-        FROM lahman_pitching
-        WHERE yearID = ?
+        FROM {table}
+        WHERE {year_col} = ?
         """,
         [year],
     ).fetchone()
@@ -207,9 +241,10 @@ def compute_baserunning_value(stats: dict, year: int) -> float:
 
 # --- Fielding value (Statcast OAA, 2016+) ------------------------------------
 
-def fielding_runs_for_season(con: duckdb.DuckDBPyConnection, year: int) -> pd.DataFrame:
+def fielding_runs_for_season(con: duckdb.DuckDBPyConnection, year: int,
+                              source: str = "lahman") -> pd.DataFrame:
     """Statcast's own outs-above-average -> runs conversion
-    (fielding_runs_prevented), one row per Lahman playerID, for `year`.
+    (fielding_runs_prevented), one row per playerID, for `year`.
 
     Returns an empty frame for years with no OAA data (statcast_oaa only
     covers 2016+): those players' fielding value is then implicitly 0 when
@@ -217,7 +252,24 @@ def fielding_runs_for_season(con: duckdb.DuckDBPyConnection, year: int) -> pd.Da
     (documented, not "correct") treatment for 2015 -- OAA simply doesn't
     exist yet for that season, and Lahman's raw PO/A/E fielding stats don't
     support a comparably reliable per-play runs estimate without the
-    shot-charting data that grounds OAA."""
+    shot-charting data that grounds OAA.
+
+    source="mlbapi" (see _season_source) joins statcast_oaa directly on its
+    own player_id (an MLB Advanced Media ID), matching the "mlbam_<id>"
+    playerID scheme ingest/mlb_stats_api.py uses -- no Lahman crosswalk
+    needed, since a rookie who debuted this season wouldn't be in
+    lahman_people/player_id_lookup yet anyway."""
+    if source != "lahman":
+        return con.execute(
+            """
+            SELECT DISTINCT
+                'mlbam_' || CAST(oaa.player_id AS VARCHAR) AS playerID,
+                oaa.fielding_runs_prevented
+            FROM statcast_oaa oaa
+            WHERE oaa.season = ? AND oaa.pos = 'ALL'
+            """,
+            [year],
+        ).fetchdf()
     return con.execute(
         """
         SELECT DISTINCT
@@ -274,7 +326,8 @@ def position_adjustment_runs(primary_position: str | None, pa: float) -> float:
 
 # --- Replacement level --------------------------------------------------------
 
-def replacement_runs_pools(con: duckdb.DuckDBPyConnection, year: int) -> dict:
+def replacement_runs_pools(con: duckdb.DuckDBPyConnection, year: int,
+                            source: str = "lahman") -> dict:
     """Converts the published .294 replacement-level win% into a runs-per-PA
     (batting side) and runs-per-IP (pitching side) rate for `year`.
 
@@ -289,10 +342,21 @@ def replacement_runs_pools(con: duckdb.DuckDBPyConnection, year: int) -> dict:
     total batting PA / pitching IP that season -- FanGraphs instead uses an
     empirically-derived ~57/43 split and separate starter/reliever
     replacement levels, which this simplified version does not reproduce.
+
+    source="mlbapi" (see _season_source) reads avg_games/n_teams and the PA/IP
+    totals from the MLB Stats API fallback tables instead of Lahman -- for an
+    in-progress season avg_games is then that season's games-played-so-far,
+    which is exactly what's wanted: replacement level scales down along with
+    however much of the season has actually been played, the same way it
+    already scales down for a real shortened season like 2020.
     """
     c = constants_for_season(year)
+    teams_table, batting_table, pitching_table, year_col = (
+        ("lahman_teams", "lahman_batting", "lahman_pitching", "yearID") if source == "lahman"
+        else ("mlbapi_teams", "mlbapi_batting", "mlbapi_pitching", "season")
+    )
     teams_row = con.execute(
-        "SELECT COUNT(DISTINCT teamID) AS n_teams, AVG(G) AS avg_games FROM lahman_teams WHERE yearID = ?",
+        f"SELECT COUNT(DISTINCT teamID) AS n_teams, AVG(G) AS avg_games FROM {teams_table} WHERE {year_col} = ?",
         [year],
     ).fetchone()
     n_teams, avg_games = teams_row
@@ -301,10 +365,10 @@ def replacement_runs_pools(con: duckdb.DuckDBPyConnection, year: int) -> dict:
     total_runs_deficit = win_deficit_per_team * c["R_W"] * n_teams
 
     batting_row = con.execute(
-        """
+        f"""
         SELECT SUM(AB) AS AB, SUM(BB) AS BB, SUM(IBB) AS IBB,
                SUM(HBP) AS HBP, SUM(SF) AS SF
-        FROM lahman_batting WHERE yearID = ?
+        FROM {batting_table} WHERE {year_col} = ?
         """,
         [year],
     ).fetchone()
@@ -312,7 +376,7 @@ def replacement_runs_pools(con: duckdb.DuckDBPyConnection, year: int) -> dict:
     total_batting_pa = ab + (bb - ibb) + hbp + sf
 
     total_pitching_ip = con.execute(
-        "SELECT SUM(IPouts) FROM lahman_pitching WHERE yearID = ?", [year]
+        f"SELECT SUM(IPouts) FROM {pitching_table} WHERE {year_col} = ?", [year]
     ).fetchone()[0] / 3
 
     batting_pool = total_runs_deficit * 0.5
@@ -354,45 +418,82 @@ def season_war_leaderboard(con: duckdb.DuckDBPyConnection, year: int,
     value; the other side is simply 0.
     """
     c = constants_for_season(year)
+    source = _season_source(con, year)
     half_pfs = park_factor.team_half_park_factors(con, year)
-    repl = replacement_runs_pools(con, year)
-    positions = primary_positions_for_season(con, year).set_index("playerID")
-    fielding = fielding_runs_for_season(con, year).set_index("playerID")
-    bat_team_weights = _team_game_weights(con, year, "lahman_batting", "G")
-    pit_team_weights = _team_game_weights(con, year, "lahman_pitching", "IPouts")
+    repl = replacement_runs_pools(con, year, source=source)
 
-    batting = con.execute(
-        """
-        SELECT
-            b.playerID, p.full_name,
-            STRING_AGG(DISTINCT b.teamID, '/') AS teams,
-            SUM(b.AB) AS AB, SUM(b.H) AS H, SUM(b."2B") AS "2B", SUM(b."3B") AS "3B",
-            SUM(b.HR) AS HR, SUM(b.BB) AS BB, SUM(b.IBB) AS IBB, SUM(b.HBP) AS HBP,
-            SUM(b.SF) AS SF, SUM(b.SB) AS SB, SUM(b.CS) AS CS
-        FROM lahman_batting b
-        JOIN v_people p ON b.playerID = p.playerID
-        WHERE b.yearID = ?
-        GROUP BY b.playerID, p.full_name
-        """,
-        [year],
-    ).fetchdf()
+    if source == "lahman":
+        positions = primary_positions_for_season(con, year).set_index("playerID")
+        bat_team_weights = _team_game_weights(con, year, "lahman_batting", "G")
+        pit_team_weights = _team_game_weights(con, year, "lahman_pitching", "IPouts")
+    else:
+        # MLB Stats API's season-aggregate endpoint doesn't expose per-team
+        # stint splits, so park factor falls back to weighted_half_park_factor's
+        # own neutral-1.0 default below -- moot anyway, since a provisional
+        # (no-Lahman-yet) season also has no Retrosheet Game Logs to compute a
+        # real park factor from in the first place (half_pfs is already {}).
+        positions = con.execute(
+            "SELECT playerID, primary_position FROM mlbapi_batting WHERE season = ?", [year],
+        ).fetchdf().set_index("playerID")
+        bat_team_weights = {}
+        pit_team_weights = {}
 
-    pitching = con.execute(
-        """
-        SELECT
-            pit.playerID, p.full_name,
-            STRING_AGG(DISTINCT pit.teamID, '/') AS teams,
-            SUM(pit.IPouts) AS IPouts, SUM(pit.HR) AS HR, SUM(pit.BB) AS BB,
-            SUM(pit.HBP) AS HBP, SUM(pit.SO) AS SO
-        FROM lahman_pitching pit
-        JOIN v_people p ON pit.playerID = p.playerID
-        WHERE pit.yearID = ?
-        GROUP BY pit.playerID, p.full_name
-        """,
-        [year],
-    ).fetchdf()
+    fielding = fielding_runs_for_season(con, year, source=source).set_index("playerID")
 
-    league_totals = league_totals_for_season(con, year)
+    if source == "lahman":
+        batting = con.execute(
+            """
+            SELECT
+                b.playerID, p.full_name,
+                STRING_AGG(DISTINCT b.teamID, '/') AS teams,
+                SUM(b.AB) AS AB, SUM(b.H) AS H, SUM(b."2B") AS "2B", SUM(b."3B") AS "3B",
+                SUM(b.HR) AS HR, SUM(b.BB) AS BB, SUM(b.IBB) AS IBB, SUM(b.HBP) AS HBP,
+                SUM(b.SF) AS SF, SUM(b.SB) AS SB, SUM(b.CS) AS CS
+            FROM lahman_batting b
+            JOIN v_people p ON b.playerID = p.playerID
+            WHERE b.yearID = ?
+            GROUP BY b.playerID, p.full_name
+            """,
+            [year],
+        ).fetchdf()
+    else:
+        batting = con.execute(
+            """
+            SELECT
+                playerID, full_name, teamID AS teams,
+                AB, H, "2B", "3B", HR, BB, IBB, HBP, SF, SB, CS
+            FROM mlbapi_batting
+            WHERE season = ?
+            """,
+            [year],
+        ).fetchdf()
+
+    if source == "lahman":
+        pitching = con.execute(
+            """
+            SELECT
+                pit.playerID, p.full_name,
+                STRING_AGG(DISTINCT pit.teamID, '/') AS teams,
+                SUM(pit.IPouts) AS IPouts, SUM(pit.HR) AS HR, SUM(pit.BB) AS BB,
+                SUM(pit.HBP) AS HBP, SUM(pit.SO) AS SO
+            FROM lahman_pitching pit
+            JOIN v_people p ON pit.playerID = p.playerID
+            WHERE pit.yearID = ?
+            GROUP BY pit.playerID, p.full_name
+            """,
+            [year],
+        ).fetchdf()
+    else:
+        pitching = con.execute(
+            """
+            SELECT playerID, full_name, teamID AS teams, IPouts, HR, BB, HBP, SO
+            FROM mlbapi_pitching
+            WHERE season = ?
+            """,
+            [year],
+        ).fetchdf()
+
+    league_totals = league_totals_for_season(con, year, source=source)
 
     batting_rows = {}
     for row in batting.itertuples():
@@ -465,6 +566,10 @@ def season_war_leaderboard(con: duckdb.DuckDBPyConnection, year: int,
         })
 
     df = pd.DataFrame(combined)
-    if df.empty:
-        return df
-    return df.sort_values("WAR", ascending=False).head(limit).reset_index(drop=True)
+    if not df.empty:
+        df = df.sort_values("WAR", ascending=False).head(limit).reset_index(drop=True)
+    # .attrs (not a real column) so callers can tell a provisional,
+    # MLB-Stats-API-sourced leaderboard apart from a Lahman-backed one -- e.g.
+    # cli.py checks this to decide whether to print a provisional-data notice.
+    df.attrs["data_source"] = source
+    return df
